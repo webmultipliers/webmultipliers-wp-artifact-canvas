@@ -1,0 +1,9 @@
+/vendor/
+/node_modules/
+/blocks/artifact/build/
+/dist/
+*.zip
+.DS_Store
+.vscode/
+build-prod-zip.sh
+PLAN.md

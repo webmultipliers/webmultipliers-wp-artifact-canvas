@@ -1,0 +1,23 @@
+{
+    "$schema": "https://schemas.wp.org/trunk/block.json",
+    "apiVersion": 3,
+    "name": "wmac/artifact",
+    "version": "0.1.0",
+    "title": "Artifact Canvas",
+    "category": "text",
+    "description": "Stores a complete HTML document and serves it as a passthrough canvas on the front end.",
+    "textdomain": "webmultipliers-wp-artifact-canvas",
+    "editorScript": "file:./editor.js",
+    "editorStyle": "file:./editor.css",
+    "attributes": {
+        "html": {
+            "type": "string",
+            "default": ""
+        }
+    },
+    "supports": {
+        "html": false,
+        "reusable": false,
+        "lock": false
+    }
+}

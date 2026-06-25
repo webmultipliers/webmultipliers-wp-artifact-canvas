@@ -1,0 +1,49 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          tools: composer
+
+      - name: Install Composer dependencies (production)
+        run: composer install --no-dev --optimize-autoloader
+
+      - name: Stage release directory
+        run: |
+          mkdir -p dist/webmultipliers-wp-artifact-canvas
+          rsync -a \
+            --exclude='.git' \
+            --exclude='.github' \
+            --exclude='.vscode' \
+            --exclude='node_modules' \
+            --exclude='blocks/artifact/build/*.map' \
+            --exclude='dist' \
+            --exclude='*.zip' \
+            --exclude='PLAN.md' \
+            . dist/webmultipliers-wp-artifact-canvas/
+
+      - name: Zip plugin
+        run: |
+          cd dist
+          zip -r ../webmultipliers-wp-artifact-canvas.zip webmultipliers-wp-artifact-canvas/
+
+      - name: Attach zip to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: webmultipliers-wp-artifact-canvas.zip

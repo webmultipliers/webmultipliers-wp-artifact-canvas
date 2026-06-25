@@ -1,0 +1,21 @@
+{
+    "name": "webmultipliers/wp-artifact-canvas",
+    "description": "Host fully-rendered HTML artifacts on WordPress — pure passthrough rendering, zero theme interference.",
+    "type": "wordpress-plugin",
+    "license": "GPL-2.0-or-later",
+    "require": {
+        "php": ">=8.1"
+    },
+    "autoload": {
+        "psr-4": {
+            "WebMultipliers\\ArtifactCanvas\\": "src/"
+        }
+    },
+    "scripts": {
+        "build": "echo 'No JavaScript build needed.'",
+        "package": "@build"
+    },
+    "config": {
+        "optimize-autoloader": true
+    }
+}
