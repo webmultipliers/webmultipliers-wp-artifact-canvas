@@ -13,6 +13,10 @@
         "html": {
             "type": "string",
             "default": ""
+        },
+        "fileStored": {
+            "type": "boolean",
+            "default": false
         }
     },
     "supports": {

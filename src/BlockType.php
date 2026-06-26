@@ -8,6 +8,15 @@ class BlockType {
 
 	public function register_hooks(): void {
 		add_action( 'init', [ $this, 'register' ] );
+		add_action( 'enqueue_block_editor_assets', [ $this, 'enqueue_editor_assets' ] );
+	}
+
+	public function enqueue_editor_assets(): void {
+		$screen = function_exists( 'get_current_screen' ) ? get_current_screen() : null;
+		if ( ! $screen || $screen->base !== 'post' || $screen->post_type !== PostType::KEY ) {
+			return;
+		}
+		wp_enqueue_code_editor( [ 'type' => 'text/html' ] );
 	}
 
 	public function register(): void {

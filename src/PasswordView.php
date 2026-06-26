@@ -14,9 +14,15 @@ class PasswordView {
 		header( 'Cache-Control: no-store, no-cache, must-revalidate' );
 		header( 'Pragma: no-cache' );
 
-		$title = esc_html( get_the_title( $post ) );
-		$form  = get_the_password_form( $post );
-		$lang  = esc_attr( get_bloginfo( 'language' ) );
+		$title     = esc_html( get_the_title( $post ) );
+		$form      = get_the_password_form( $post );
+		$lang      = esc_attr( get_bloginfo( 'language' ) );
+		$logo_html = function_exists( 'get_custom_logo' ) ? get_custom_logo() : '';
+
+		$logo_block = '';
+		if ( $logo_html !== '' ) {
+			$logo_block = '<div class="logo">' . $logo_html . '</div>';
+		}
 
 		// phpcs:disable WordPress.Security.EscapeOutput.OutputNotEscaped
 		echo <<<HTML
@@ -30,12 +36,14 @@ class PasswordView {
 		<style>
 		body{font-family:system-ui,sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;background:#f6f7f7}
 		.card{background:#fff;padding:2rem;border-radius:8px;box-shadow:0 2px 12px rgba(0,0,0,.1);max-width:400px;width:100%}
+		.logo{text-align:center;margin-bottom:1.5rem}.logo img{max-height:60px;width:auto}
 		h1{font-size:1.25rem;margin:0 0 1rem}
 		input[type=password]{width:100%;padding:.5rem;margin:.5rem 0 1rem;box-sizing:border-box}
 		input[type=submit]{cursor:pointer}
 		</style>
 		</head>
 		<body><div class="card">
+		{$logo_block}
 		<h1>{$title}</h1>
 		{$form}
 		</div></body></html>

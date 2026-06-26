@@ -15,30 +15,58 @@ class Renderer {
 			return;
 		}
 
-		remove_action( 'template_redirect', 'redirect_canonical' );
+		// Let WP handle /embed/ requests for oEmbed support.
+		if ( is_embed() ) {
+			return;
+		}
 
 		$post = get_queried_object();
 
 		if ( post_password_required( $post ) ) {
+			remove_action( 'template_redirect', 'redirect_canonical' );
 			( new PasswordView() )->render( $post );
 			exit;
 		}
 
-		$html = $this->get_artifact_html( $post );
+		// For previews, serve the autosave content instead of the last published version.
+		$content_source = $post;
+		if ( is_preview() && current_user_can( 'edit_post', $post->ID ) ) {
+			$autosave = wp_get_post_autosave( $post->ID, get_current_user_id() );
+			if ( $autosave instanceof \WP_Post ) {
+				$content_source = $autosave;
+			}
+		}
+
+		$html = $this->get_artifact_html( $post, $content_source );
 
 		if ( $html === '' ) {
 			return;
 		}
 
+		// Only suppress canonical redirect once we know we own this response.
+		remove_action( 'template_redirect', 'redirect_canonical' );
+
+		$html = $this->maybe_inject_oembed_discovery( $html, $post );
 		$html = $this->maybe_inject_admin_toolbar( $html, $post );
+		$html = (string) apply_filters( 'wmac_rendered_html', $html, $post );
 
 		$this->send_headers( $post );
 		echo $html; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
 		exit;
 	}
 
-	private function get_artifact_html( \WP_Post $post ): string {
-		$blocks = parse_blocks( $post->post_content );
+	private function get_artifact_html( \WP_Post $post, \WP_Post $content_source ): string {
+		// File lookup always uses the canonical post ID — never the autosave's ID.
+		$file_path = ArtifactFile::get_file_path( $post->ID );
+		if ( $file_path !== null && is_readable( $file_path ) ) {
+			$content = file_get_contents( $file_path );
+			if ( $content !== false ) {
+				return $content;
+			}
+		}
+
+		// For non-file-attached artifacts, extract HTML from the autosave (preview) or published content.
+		$blocks = parse_blocks( $content_source->post_content );
 		foreach ( $blocks as $block ) {
 			if ( $block['blockName'] === 'wmac/artifact' ) {
 				return $block['attrs']['html'] ?? '';
@@ -67,6 +95,52 @@ class Renderer {
 		if ( $noindex ) {
 			header( 'X-Robots-Tag: noindex, nofollow' );
 		}
+
+		$csp = (string) apply_filters( 'wmac_csp', '', $post );
+		if ( $csp !== '' ) {
+			header( 'Content-Security-Policy: ' . str_replace( [ "\r", "\n" ], '', $csp ) );
+		}
+	}
+
+	private function maybe_inject_oembed_discovery( string $html, \WP_Post $post ): string {
+		if ( $post->post_status !== 'publish' || ! empty( $post->post_password ) ) {
+			return $html;
+		}
+
+		$permalink = get_permalink( $post->ID );
+		if ( ! $permalink ) {
+			return $html;
+		}
+
+		$oembed_url = add_query_arg(
+			[ 'url' => $permalink, 'format' => 'json' ],
+			rest_url( 'oembed/1.0/embed' )
+		);
+
+		$link = sprintf(
+			'<link rel="alternate" type="application/json+oembed" href="%s" title="%s" />' . "\n",
+			esc_url( $oembed_url ),
+			esc_attr( get_the_title( $post->ID ) )
+		);
+
+		return $this->inject_into_head( $html, $link );
+	}
+
+	private function inject_into_head( string $html, string $injection ): string {
+		$count  = 0;
+		$result = preg_replace_callback(
+			'/<\/head>/i',
+			static function ( array $m ) use ( $injection ): string {
+				return $injection . $m[0];
+			},
+			$html,
+			1,
+			$count
+		);
+		if ( $count > 0 && is_string( $result ) ) {
+			return $result;
+		}
+		return $injection . $html;
 	}
 
 	private function maybe_inject_admin_toolbar( string $html, \WP_Post $post ): string {
@@ -173,8 +247,16 @@ class Renderer {
 	}
 
 	private function inject_after_body_open( string $html, string $injection ): string {
-		$count = 0;
-		$with_body = preg_replace( '/<body\b[^>]*>/i', '$0' . $injection, $html, 1, $count );
+		$count     = 0;
+		$with_body = preg_replace_callback(
+			'/<body\b[^>]*>/i',
+			static function ( array $m ) use ( $injection ): string {
+				return $m[0] . $injection;
+			},
+			$html,
+			1,
+			$count
+		);
 		if ( $count > 0 && is_string( $with_body ) ) {
 			return $with_body;
 		}

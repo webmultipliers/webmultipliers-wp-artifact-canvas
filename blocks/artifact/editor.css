@@ -38,3 +38,92 @@
 	width: 100%;
 	height: 500px;
 }
+
+.wp-block-wmac-artifact .wmac-code--codemirror {
+	padding: 0;
+}
+
+.wp-block-wmac-artifact .wmac-code--codemirror .CodeMirror {
+	height: auto;
+	min-height: 300px;
+	font-size: 13px;
+	font-family: ui-monospace, 'Courier New', Courier, monospace;
+	border-radius: 0 0 2px 2px;
+}
+
+.wp-block-wmac-artifact .wmac-code--codemirror .CodeMirror-scroll {
+	min-height: 300px;
+}
+
+.wp-block-wmac-artifact .wmac-file-attached {
+	border: 1px solid #ddd;
+	border-radius: 0 0 2px 2px;
+	background: #f6f7f7;
+	padding: 24px 20px;
+	display: flex;
+	flex-direction: column;
+	align-items: flex-start;
+	gap: 12px;
+}
+
+.wp-block-wmac-artifact .wmac-file-attached__label {
+	margin: 0;
+	font-size: 13px;
+	color: #3c434a;
+	font-weight: 500;
+}
+
+.wp-block-wmac-artifact .wmac-file-attached__label::before {
+	content: "📎 ";
+}
+
+.wp-block-wmac-artifact .wmac-file-attached__actions {
+	display: flex;
+	gap: 8px;
+	align-items: center;
+}
+
+/* Dark theme — applied via .wmac-dark class (JS state) or OS preference */
+.wp-block-wmac-artifact .wmac-dark.CodeMirror,
+.wp-block-wmac-artifact .wmac-dark .CodeMirror {
+	background: #1e1e2e;
+	color: #cdd6f4;
+}
+
+.wp-block-wmac-artifact .wmac-dark .CodeMirror-gutters {
+	background: #181825;
+	border-right: 1px solid #313244;
+	color: #585b70;
+}
+
+.wp-block-wmac-artifact .wmac-dark .CodeMirror-cursor {
+	border-left-color: #cdd6f4;
+}
+
+.wp-block-wmac-artifact .wmac-dark .CodeMirror-selected,
+.wp-block-wmac-artifact .wmac-dark .CodeMirror-line::selection,
+.wp-block-wmac-artifact .wmac-dark .CodeMirror-line > span::selection {
+	background: #45475a;
+}
+
+.wp-block-wmac-artifact .wmac-dark .CodeMirror-activeline-background {
+	background: #313244;
+}
+
+/* HTML / CSS token colours (Catppuccin Mocha palette) */
+.wp-block-wmac-artifact .wmac-dark .cm-s-default .cm-tag        { color: #f38ba8; }
+.wp-block-wmac-artifact .wmac-dark .cm-s-default .cm-attribute  { color: #89b4fa; }
+.wp-block-wmac-artifact .wmac-dark .cm-s-default .cm-string,
+.wp-block-wmac-artifact .wmac-dark .cm-s-default .cm-string-2   { color: #a6e3a1; }
+.wp-block-wmac-artifact .wmac-dark .cm-s-default .cm-keyword    { color: #cba6f7; }
+.wp-block-wmac-artifact .wmac-dark .cm-s-default .cm-number     { color: #fab387; }
+.wp-block-wmac-artifact .wmac-dark .cm-s-default .cm-comment    { color: #6c7086; font-style: italic; }
+.wp-block-wmac-artifact .wmac-dark .cm-s-default .cm-property   { color: #89dceb; }
+.wp-block-wmac-artifact .wmac-dark .cm-s-default .cm-qualifier  { color: #89dceb; }
+.wp-block-wmac-artifact .wmac-dark .cm-s-default .cm-variable   { color: #cdd6f4; }
+.wp-block-wmac-artifact .wmac-dark .cm-s-default .cm-atom       { color: #fab387; }
+.wp-block-wmac-artifact .wmac-dark .cm-s-default .cm-meta       { color: #6c7086; }
+.wp-block-wmac-artifact .wmac-dark .cm-s-default .cm-bracket    { color: #a6e3a1; }
+.wp-block-wmac-artifact .wmac-dark .cm-s-default .cm-builtin    { color: #cba6f7; }
+.wp-block-wmac-artifact .wmac-dark .cm-s-default .cm-link       { color: #89b4fa; text-decoration: underline; }
+.wp-block-wmac-artifact .wmac-dark .cm-s-default .cm-error      { color: #f38ba8; }
