@@ -20,6 +20,8 @@ class ArtifactMeta {
 	public const NOINDEX     = '_wmac_noindex';
 	public const SEO_ENABLED = '_wmac_seo_enabled';
 	public const CSP         = '_wmac_csp';
+	public const ASSET_MAP   = '_wmac_asset_map';
+	public const TAG_MAP     = '_wmac_tag_map';
 
 	public function register_hooks(): void {
 		add_action( 'init', [ $this, 'register_meta' ] );
@@ -71,6 +73,58 @@ class ArtifactMeta {
 			'description'       => 'Per-artifact Content-Security-Policy header value.',
 			'sanitize_callback' => static function ( $v ): string {
 				return str_replace( [ "\r", "\n" ], '', sanitize_text_field( (string) $v ) );
+			},
+			'auth_callback'     => static function ( bool $allowed, string $meta_key, int $post_id ): bool {
+				return current_user_can( 'edit_post', $post_id );
+			},
+		] ) );
+
+		register_post_meta( PostType::KEY, self::ASSET_MAP, array_merge( $shared, [
+			'type'              => 'string',
+			'description'       => 'Asset map: JSON object mapping relative paths to Media Library URLs.',
+			'sanitize_callback' => static function ( $v ): string {
+				$decoded = json_decode( (string) $v, true );
+				if ( ! is_array( $decoded ) ) {
+					return '{}';
+				}
+				$clean = [];
+				foreach ( $decoded as $path => $url ) {
+					if ( is_string( $path ) && is_string( $url ) ) {
+						$clean[ sanitize_text_field( $path ) ] = esc_url_raw( $url );
+					}
+				}
+				return wp_json_encode( $clean ) ?: '{}';
+			},
+			'auth_callback'     => static function ( bool $allowed, string $meta_key, int $post_id ): bool {
+				return current_user_can( 'edit_post', $post_id );
+			},
+		] ) );
+
+		register_post_meta( PostType::KEY, self::TAG_MAP, array_merge( $shared, [
+			'type'              => 'string',
+			'description'       => 'Tag map: JSON object mapping {{tag}} names to their replacement configurations.',
+			'sanitize_callback' => static function ( $v ): string {
+				$decoded = json_decode( (string) $v, true );
+				if ( ! is_array( $decoded ) ) {
+					return '{}';
+				}
+				$clean = [];
+				foreach ( $decoded as $tag => $config ) {
+					if ( ! is_string( $tag ) || ! is_array( $config ) ) {
+						continue;
+					}
+					$safe_tag = preg_replace( '/[^a-zA-Z0-9_]/', '', $tag );
+					if ( $safe_tag === '' || $safe_tag === null ) {
+						continue;
+					}
+					$mode  = isset( $config['mode'] ) && $config['mode'] === 'dynamic' ? 'dynamic' : 'static';
+					$entry = [ 'mode' => $mode ];
+					if ( $mode === 'static' ) {
+						$entry['value'] = sanitize_text_field( (string) ( $config['value'] ?? '' ) );
+					}
+					$clean[ $safe_tag ] = $entry;
+				}
+				return wp_json_encode( $clean ) ?: '{}';
 			},
 			'auth_callback'     => static function ( bool $allowed, string $meta_key, int $post_id ): bool {
 				return current_user_can( 'edit_post', $post_id );

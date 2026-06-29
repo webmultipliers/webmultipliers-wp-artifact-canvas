@@ -18,7 +18,7 @@
 	box-sizing: border-box;
 	border: 1px solid #ddd;
 	border-radius: 0 0 2px 2px;
-	padding: 1rem;
+	padding: 0;
 	width: 100%;
 	min-height: 300px;
 	resize: vertical;
@@ -44,11 +44,11 @@
 }
 
 .wp-block-wmac-artifact .wmac-code--codemirror .CodeMirror {
+	border-radius: 0 0 2px 2px;
 	height: auto;
 	min-height: 300px;
 	font-size: 13px;
 	font-family: ui-monospace, 'Courier New', Courier, monospace;
-	border-radius: 0 0 2px 2px;
 }
 
 .wp-block-wmac-artifact .wmac-code--codemirror .CodeMirror-scroll {
@@ -56,21 +56,21 @@
 }
 
 .wp-block-wmac-artifact .wmac-file-attached {
-	border: 1px solid #ddd;
-	border-radius: 0 0 2px 2px;
-	background: #f6f7f7;
-	padding: 24px 20px;
 	display: flex;
 	flex-direction: column;
 	align-items: flex-start;
 	gap: 12px;
+	border: 1px solid #ddd;
+	border-radius: 0 0 2px 2px;
+	background: #f6f7f7;
+	padding: 24px 20px;
 }
 
 .wp-block-wmac-artifact .wmac-file-attached__label {
 	margin: 0;
-	font-size: 13px;
 	color: #3c434a;
 	font-weight: 500;
+	font-size: 13px;
 }
 
 .wp-block-wmac-artifact .wmac-file-attached__label::before {
@@ -79,8 +79,149 @@
 
 .wp-block-wmac-artifact .wmac-file-attached__actions {
 	display: flex;
-	gap: 8px;
 	align-items: center;
+	gap: 8px;
+}
+
+/* ---- Document panel: shared ---- */
+
+.wmac-panel-empty {
+	color: #757575;
+	font-size: 12px;
+	margin: 4px 0 0;
+}
+
+/* ---- Asset Mapping panel ---- */
+
+.wmac-asset-list {
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
+}
+
+.wmac-asset-row {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+}
+
+.wmac-asset-path {
+	display: block;
+	font-size: 11px;
+	word-break: break-all;
+	color: #3c434a;
+}
+
+.wmac-asset-controls {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	flex-wrap: wrap;
+}
+
+.wmac-asset-url {
+	flex: 1;
+	font-size: 11px;
+	word-break: break-all;
+	color: #1d4ed8;
+	min-width: 0;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.wmac-asset-unmapped {
+	flex: 1;
+	font-size: 11px;
+	color: #9e9e9e;
+	font-style: italic;
+}
+
+/* ---- Merge Tags panel ---- */
+
+.wmac-tag-list {
+	display: flex;
+	flex-direction: column;
+	gap: 16px;
+}
+
+.wmac-tag-row {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+}
+
+.wmac-tag-name {
+	display: block;
+	font-size: 12px;
+	color: #3c434a;
+}
+
+.wmac-tag-hook-hint {
+	font-size: 11px;
+	color: #757575;
+	margin: 0;
+}
+
+.wmac-tag-hook-hint code {
+	font-size: 11px;
+}
+
+/* ---- Lifecycle Status panel ---- */
+
+.wmac-lifecycle-panel {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+}
+
+/* ---- Ownership panel ---- */
+
+.wmac-ownership-panel .components-combobox-control,
+.wmac-ownership-panel .components-text-control {
+	width: 100%;
+}
+
+/* ---- Link Governance panel ---- */
+
+.wmac-governance-panel {
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
+}
+
+.wmac-view-count {
+	font-size: 12px;
+	color: #3c434a;
+	margin: 0;
+	padding: 8px 0 0;
+	border-top: 1px solid #e0e0e0;
+}
+
+/* ---- Tracking & Alerts panel ---- */
+
+.wmac-tracking-panel {
+	display: flex;
+	flex-direction: column;
+	gap: 14px;
+}
+
+/* ---- Shared panel hint ---- */
+
+.wmac-panel-hint {
+	font-size: 11px;
+	color: #757575;
+	margin: 4px 0 0;
+	line-height: 1.5;
+}
+
+.wmac-panel-hint--warning {
+	color: #996b00;
+	background: #fff8e6;
+	border: 1px solid #f0c000;
+	border-radius: 2px;
+	padding: 6px 8px;
+	margin: 0 0 8px;
 }
 
 /* Dark theme — applied via .wmac-dark class (JS state) or OS preference */
@@ -91,8 +232,8 @@
 }
 
 .wp-block-wmac-artifact .wmac-dark .CodeMirror-gutters {
-	background: #181825;
 	border-right: 1px solid #313244;
+	background: #181825;
 	color: #585b70;
 }
 

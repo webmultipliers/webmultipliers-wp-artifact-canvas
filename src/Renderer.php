@@ -28,6 +28,23 @@ class Renderer {
 			exit;
 		}
 
+		// Expiry / view-count gate (public visitors only; editors always pass through).
+		$governance = new LinkGovernance();
+		if ( $governance->is_expired( $post ) ) {
+			remove_action( 'template_redirect', 'redirect_canonical' );
+			$governance->render_expired_view( $post );
+			exit;
+		}
+
+		// PDF format dispatch — different render path but same gate chain above.
+		$pdf_renderer = new PdfRenderer();
+		if ( $pdf_renderer->is_pdf_artifact( $post ) ) {
+			remove_action( 'template_redirect', 'redirect_canonical' );
+			do_action( 'wmac_artifact_served', $post );
+			$pdf_renderer->render( $post );
+			exit;
+		}
+
 		// For previews, serve the autosave content instead of the last published version.
 		$content_source = $post;
 		if ( is_preview() && current_user_can( 'edit_post', $post->ID ) ) {
@@ -45,6 +62,9 @@ class Renderer {
 
 		// Only suppress canonical redirect once we know we own this response.
 		remove_action( 'template_redirect', 'redirect_canonical' );
+
+		// Notify view-count and webhook listeners that we are about to serve this artifact.
+		do_action( 'wmac_artifact_served', $post );
 
 		$html = $this->maybe_inject_oembed_discovery( $html, $post );
 		$html = $this->maybe_inject_admin_toolbar( $html, $post );

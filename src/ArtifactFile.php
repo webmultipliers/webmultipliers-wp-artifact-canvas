@@ -133,7 +133,7 @@ class ArtifactFile {
 			);
 		}
 
-		$dir = $this->get_or_create_upload_dir();
+		$dir = self::get_or_create_upload_dir();
 		if ( is_wp_error( $dir ) ) {
 			return $dir;
 		}
@@ -194,7 +194,7 @@ class ArtifactFile {
 	 *
 	 * @return string|\WP_Error
 	 */
-	private function get_or_create_upload_dir(): string|\WP_Error {
+	public static function get_or_create_upload_dir(): string|\WP_Error {
 		$upload_dir = wp_upload_dir();
 		if ( $upload_dir['error'] ) {
 			return new \WP_Error(

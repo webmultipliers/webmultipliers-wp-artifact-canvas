@@ -1,20 +1,14 @@
 ( function ( blocks, blockEditor, components, element, i18n ) {
 	var registerBlockType  = blocks.registerBlockType;
 	var useBlockProps      = blockEditor.useBlockProps;
-	var InspectorControls  = blockEditor.InspectorControls;
 	var PlainText          = blockEditor.PlainText;
 	var Button             = components.Button;
-	var PanelBody          = components.PanelBody;
-	var TextareaControl    = components.TextareaControl;
-	var ToggleControl      = components.ToggleControl;
-	var TextControl        = components.TextControl;
 	var createElement      = element.createElement;
 	var Fragment           = element.Fragment;
 	var useState           = element.useState;
 	var useRef             = element.useRef;
 	var useEffect          = element.useEffect;
 	var __                 = i18n.__;
-	var useEntityProp      = wp.coreData && wp.coreData.useEntityProp;
 
 	/**
 	 * CodeMirror-backed editor. Rendered as a plain div container; CodeMirror
@@ -59,6 +53,16 @@
 			editorRef.current = editor;
 			editor.codemirror.setValue( value || '' );
 
+			// CodeMirror can initialize before layout settles in the block editor.
+			// A deferred refresh ensures it paints correctly on first render.
+			if ( typeof window !== 'undefined' && window.requestAnimationFrame ) {
+				window.requestAnimationFrame( function () {
+					window.requestAnimationFrame( function () {
+						editor.codemirror.refresh();
+					} );
+				} );
+			}
+
 			editor.codemirror.on( 'change', function ( cm ) {
 				onChange( cm.getValue() );
 			} );
@@ -73,6 +77,24 @@
 			};
 		}, [] ); // eslint-disable-line react-hooks/exhaustive-deps
 
+		useEffect( function () {
+			if ( ! editorRef.current || ! editorRef.current.codemirror ) {
+				return;
+			}
+
+			var cm = editorRef.current.codemirror;
+			var nextValue = value || '';
+
+			// Keep CodeMirror synced when block attributes update after mount.
+			if ( cm.getValue() !== nextValue ) {
+				var cursor = cm.getCursor();
+				cm.setValue( nextValue );
+				cm.setCursor( cursor );
+			}
+
+			cm.refresh();
+		}, [ value, dark ] );
+
 		return createElement( 'div', {
 			ref:       containerRef,
 			className: 'wmac-code wmac-code--codemirror' + ( dark ? ' wmac-dark' : '' ),
@@ -82,11 +104,26 @@
 	/**
 	 * Ensures the post has been saved (has a real post ID) before calling back.
 	 * If the post is new (auto-draft), triggers a save and waits up to 15 s for
-	 * isCurrentPostNew() to become false. Times out with an error notice.
+	 * the post to become persisted. Times out with an error notice.
 	 */
 	function saveIfNeededThen( callback ) {
+		function isPostPersisted( selector ) {
+			var postId = selector.getCurrentPostId && selector.getCurrentPostId();
+
+			if ( ! postId ) {
+				return false;
+			}
+
+			if ( selector.isEditedPostNew ) {
+				return ! selector.isEditedPostNew();
+			}
+
+			var post = selector.getCurrentPost ? selector.getCurrentPost() : null;
+			return !! ( post && post.status && post.status !== 'auto-draft' );
+		}
+
 		var editor = wp.data.select( 'core/editor' );
-		if ( ! editor.isCurrentPostNew() ) {
+		if ( isPostPersisted( editor ) ) {
 			callback( editor.getCurrentPostId() );
 			return;
 		}
@@ -106,7 +143,7 @@
 		unsubscribe = wp.data.subscribe( function () {
 			if ( timedOut ) return;
 			var s = wp.data.select( 'core/editor' );
-			if ( ! s.isCurrentPostNew() ) {
+			if ( isPostPersisted( s ) ) {
 				clearTimeout( timeout );
 				unsubscribe();
 				callback( s.getCurrentPostId() );
@@ -154,24 +191,6 @@
 		var previewLink = wp.data.useSelect( function ( select ) {
 			return select( 'core/editor' ).getEditedPostPreviewLink();
 		} );
-
-		// Per-artifact meta (read/write via REST). Falls back gracefully if wp.coreData unavailable.
-		var _metaState = useEntityProp
-			? useEntityProp( 'postType', 'wm_artifact', 'meta' )
-			: [ {}, function () {} ];
-		var meta    = _metaState[ 0 ] || {};
-		var setMeta = _metaState[ 1 ];
-
-		function updateMeta( key, value ) {
-			var updated = Object.assign( {}, meta );
-			updated[ key ] = value;
-			setMeta( updated );
-		}
-
-		var metaPrompt  = meta[ '_wmac_prompt' ]      || '';
-		var metaNoindex = meta[ '_wmac_noindex' ]     || '';
-		var metaSeo     = meta[ '_wmac_seo_enabled' ] || '';
-		var metaCsp     = meta[ '_wmac_csp' ]         || '';
 
 		// Client-side read: file contents go into the html block attribute.
 		function handleFileSelect( event ) {
@@ -365,45 +384,6 @@
 			} );
 		}
 
-		// --- Inspector (sidebar) ---
-
-		var inspector = createElement(
-			InspectorControls,
-			null,
-			createElement(
-				PanelBody,
-				{
-					title:       __( 'Artifact Settings', 'webmultipliers-wp-artifact-canvas' ),
-					initialOpen: true,
-				},
-				createElement( ToggleControl, {
-					label:    __( 'Discourage search engines (noindex)', 'webmultipliers-wp-artifact-canvas' ),
-					help:     __( 'Sends a noindex header. Default is on; toggle off to allow indexing.', 'webmultipliers-wp-artifact-canvas' ),
-					checked:  metaNoindex !== '0',
-					onChange: function ( v ) { updateMeta( '_wmac_noindex', v ? '1' : '0' ); },
-				} ),
-				createElement( ToggleControl, {
-					label:    __( 'Inject SEO meta tags', 'webmultipliers-wp-artifact-canvas' ),
-					help:     __( 'Adds og: / twitter: tags from the post title, excerpt, and featured image.', 'webmultipliers-wp-artifact-canvas' ),
-					checked:  metaSeo === '1',
-					onChange: function ( v ) { updateMeta( '_wmac_seo_enabled', v ? '1' : '0' ); },
-				} ),
-				createElement( TextControl, {
-					label:    __( 'Content Security Policy', 'webmultipliers-wp-artifact-canvas' ),
-					help:     __( 'Per-artifact CSP header. Overrides the global wmac_csp filter. Leave blank to inherit.', 'webmultipliers-wp-artifact-canvas' ),
-					value:    metaCsp,
-					onChange: function ( v ) { updateMeta( '_wmac_csp', v ); },
-				} ),
-				createElement( TextareaControl, {
-					label:    __( 'Generation Prompt', 'webmultipliers-wp-artifact-canvas' ),
-					help:     __( 'Paste the prompt used to generate this artifact. Private — not published.', 'webmultipliers-wp-artifact-canvas' ),
-					value:    metaPrompt,
-					onChange: function ( v ) { updateMeta( '_wmac_prompt', v ); },
-					rows:     5,
-				} )
-			)
-		);
-
 		// --- Toolbar ---
 		// Both hidden inputs are always mounted so their refs stay stable.
 		// Toolbar action buttons swap based on fileStored state.
@@ -411,7 +391,6 @@
 		return createElement(
 			Fragment,
 			null,
-			inspector,
 			createElement(
 				'div',
 				blockProps,
