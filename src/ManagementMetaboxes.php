@@ -5,16 +5,14 @@ declare( strict_types=1 );
 namespace WebMultipliers\ArtifactCanvas;
 
 /**
- * Real WordPress metaboxes for Merge Tags and Asset Mapping management.
+ * Single full-width tabbed metabox below the block editor.
  *
- * Registers two metaboxes via add_meta_box() that appear below the
- * Gutenberg block editor. Each metabox renders a PHP div container;
- * management-metaboxes.js mounts an interactive React app into it using
- * the same wp.data store that powers the rest of the editor, so changes
- * are captured in the entity store and saved when the user clicks Update.
+ * Registers one metabox ("Artifact") with five tabs rendered by React:
+ * Settings | Governance | Tracking | Merge Tags | Asset Mapping.
  *
- * The JS also registers a PluginSidebar so the same management UI is
- * accessible from the editor header toolbar (More tools & options → …).
+ * The React app reads and writes post meta via the wp.data entity store
+ * (getEditedEntityRecord / editEntityRecord), so all changes save atomically
+ * when the user clicks Update — identical to how the block editor handles meta.
  */
 class ManagementMetaboxes {
 
@@ -25,33 +23,17 @@ class ManagementMetaboxes {
 
 	public function register_metaboxes(): void {
 		add_meta_box(
-			'wmac-merge-tags',
-			__( 'Merge Tags', 'webmultipliers-wp-artifact-canvas' ),
-			[ $this, 'render_merge_tags' ],
-			PostType::KEY,
-			'normal',
-			'high'
-		);
-
-		add_meta_box(
-			'wmac-asset-mapping',
-			__( 'Asset Mapping', 'webmultipliers-wp-artifact-canvas' ),
-			[ $this, 'render_asset_mapping' ],
+			'wmac-artifact',
+			__( 'Artifact', 'webmultipliers-wp-artifact-canvas' ),
+			[ $this, 'render_metabox' ],
 			PostType::KEY,
 			'normal',
 			'high'
 		);
 	}
 
-	public function render_merge_tags( \WP_Post $post ): void {
-		// React mounts into this div via management-metaboxes.js.
-		echo '<div id="wmac-merge-tags-root" data-post-id="' . esc_attr( (string) $post->ID ) . '">'
-		   . '<p class="wmac-metabox-loading">' . esc_html__( 'Loading…', 'webmultipliers-wp-artifact-canvas' ) . '</p>'
-		   . '</div>';
-	}
-
-	public function render_asset_mapping( \WP_Post $post ): void {
-		echo '<div id="wmac-asset-mapping-root" data-post-id="' . esc_attr( (string) $post->ID ) . '">'
+	public function render_metabox( \WP_Post $post ): void {
+		echo '<div id="wmac-artifact-root" data-post-id="' . esc_attr( (string) $post->ID ) . '">'
 		   . '<p class="wmac-metabox-loading">' . esc_html__( 'Loading…', 'webmultipliers-wp-artifact-canvas' ) . '</p>'
 		   . '</div>';
 	}
@@ -73,9 +55,6 @@ class ManagementMetaboxes {
 			'wmac-management-metaboxes',
 			WMAC_URL . 'blocks/artifact/management-metaboxes.js',
 			[
-				'wp-plugins',
-				'wp-edit-post',
-				'wp-editor',
 				'wp-element',
 				'wp-components',
 				'wp-data',

@@ -4,7 +4,7 @@
 
 **Package slug:** `webmultipliers-wp-artifact-canvas`
 **Status:** Active development
-**Author:** Web Multipliers, LLC
+**Author:** Web Multipliers
 
 ---
 
@@ -27,8 +27,8 @@ It exists because WordPress is excellent at access control, URLs, revisions, and
 - **A purpose-built editing block.** A single locked block per canvas with a syntax-highlighted CodeMirror editor (no rich text, no paste-to-blocks transforms) so a wholesale paste stays raw. The raw HTML is stored as the block's source of truth, not as fragile inner markup.
 - **Sandboxed editor preview.** The artifact previews inside an isolated `<iframe>` in the editor, so its CSS and JS never leak into wp-admin.
 - **File upload and server-side attachment.** Load an artifact from a local `.html` file directly in the editor. Optionally attach the file to the server so large artifacts don't consume block-attribute storage.
-- **Media Library asset mapping.** Artifacts that reference relative paths (`src="assets/logo.png"`) can have those paths mapped to Media Library URLs via a dedicated sidebar panel. Replacement happens at render time — the stored HTML is never modified.
-- **Merge tag templating.** Embed `{{tag_name}}` placeholders in an artifact's HTML and configure each tag's value in the editor sidebar. Supports static string replacement or server-side dynamic resolution via a PHP filter hook — no code inside the HTML required.
+- **Media Library asset mapping.** Artifacts that reference relative paths (`src="assets/logo.png"`) can have those paths mapped to Media Library URLs via the management metabox. Replacement happens at render time — the stored HTML is never modified.
+- **Merge tag templating.** Embed `{{tag_name}}` placeholders in an artifact's HTML and configure each tag's value in the management metabox. Thirteen built-in tags resolve WP post and site data automatically. Custom tags support static string replacement or server-side dynamic resolution via a PHP filter hook — no code inside the HTML required.
 - **Access rules honored.** Draft, private, password-protected, and scheduled canvases behave the way any WordPress post would. Password-protected canvases get a clean, theme-free entry screen.
 - **Capability-aware sanitization.** Authors without the capability to post raw markup have their content run through `wp_kses_post` on save, the same as core.
 - **oEmbed provider.** Paste any published artifact URL into another Gutenberg editor and it embeds as a live iframe.
@@ -37,11 +37,11 @@ It exists because WordPress is excellent at access control, URLs, revisions, and
 - **Clean revision diffs.** The revisions screen shows a diff of the extracted HTML, not the raw block JSON.
 - **Lifecycle management.** Built-in private artifact statuses (`In Review`, `Approved`, `Archived`) complement core draft/publish states.
 - **Client and ownership metadata.** A hierarchical **Clients** taxonomy and per-artifact owner assignment support agency workflows and list-table visibility.
-- **Link governance controls.** Optional expiry date and max-view limits can automatically retire a preview link and return a dedicated expired page.
+- **Link governance controls.** Optional expiry date and max-view limits can automatically retire a preview link and return a dedicated expired page (HTTP 410).
 - **Tracking and alert hooks.** Per-artifact analytics snippets can be injected into `<head>`, and optional outbound webhooks fire on public views.
 - **Page URL usurpation.** A standard WordPress Page can be configured to serve a published artifact's bytes at the Page URL.
-- **REST and automation surface.** Endpoints support artifact creation, HTML file attach/remove, PDF file attach/remove, and Git webhook-driven deployments.
-- **PDF format mode.** Artifacts can be switched to PDF delivery with a branded PDF.js viewer shell and protected byte-stream endpoint.
+- **REST and automation surface.** Endpoints support artifact creation, HTML file attach/remove, PDF file attach/remove, and Git/CI webhook-driven deployments.
+- **PDF format mode.** Artifacts can be switched to PDF delivery with a branded PDF.js viewer shell and a protected byte-stream endpoint.
 
 ## Requirements
 
@@ -59,32 +59,76 @@ It exists because WordPress is excellent at access control, URLs, revisions, and
 
 1. Create a new Artifact.
 2. The editor opens with the Artifact Canvas block already in place (it is the only block allowed).
-3. Paste your complete HTML document — including `<style>` and `<script>` — into the code field, or use **Upload HTML** / **Attach File** from the toolbar.
-4. Use the in-editor preview to confirm it renders correctly in isolation.
+3. Paste your complete HTML document — including `<style>` and `<script>` — into the code field, or use **Upload HTML** / **Attach File** from the block toolbar.
+4. Use the in-editor **Preview** button to confirm it renders correctly in isolation (sandboxed iframe).
 5. Publish. Visit the public URL and you'll see your document rendered exactly as written, with no WordPress chrome.
 
-Additional post-side panels let you configure:
+### Block toolbar actions
 
-- Artifact settings (alias, noindex override, SEO override, CSP, generation prompt)
-- Asset mappings and merge tags
-- Lifecycle status and owner assignment
-- Link governance (expiry date, max views, view count)
-- Tracking and alert webhooks
+| Button | Description |
+| --- | --- |
+| **Upload HTML** | Read a `.html` file client-side into the code editor |
+| **Attach File** | Upload a `.html` file to the server; block stores a reference instead of inline HTML |
+| **Preview / Edit** | Toggle between the CodeMirror editor and a sandboxed iframe preview |
+| **☀ / 🌙** | Toggle the code editor between light and dark (Catppuccin Mocha) themes |
+| **Download** | Save the current artifact HTML to disk |
+| **Open ↗** | Open the WordPress preview link in a new tab |
+
+### Sidebar panels
+
+Two quick-reference panels appear in the Post sidebar (Document tab):
+
+- **Lifecycle Status** — set draft/pending/publish/private or a custom status (In Review, Approved, Archived)
+- **Ownership** — assign a responsible developer or project manager (WP user)
+
+### Management metabox
+
+A full-width tabbed metabox appears below the code editor with five tabs. All changes save atomically with the rest of the post when you click **Update**.
+
+| Tab | Fields |
+| --- | --- |
+| **Settings** | Custom URL alias, noindex override, SEO meta injection toggle, Content Security Policy, generation prompt |
+| **Governance** | Expiry date (ISO 8601), max public views, live view count (read-only) |
+| **Tracking** | Analytics snippet (injected before `</head>`), view alert webhook URL |
+| **Merge Tags** | Detect and configure `{{tag}}` placeholders — set static replacement values or mark tags as dynamic |
+| **Asset Mapping** | Detect unresolved relative paths and map each to a Media Library file |
 
 ## Asset mapping
 
-If the artifact references relative paths — `<img src="images/logo.png">`, `<link href="theme.css">` — the **Asset Mapping** panel in the Post sidebar will list every unresolved path it detects and let you map each one to a file in the WordPress Media Library.
+If the artifact references relative paths — `<img src="images/logo.png">`, `<link href="theme.css">` — the **Asset Mapping** tab in the management metabox will list every unresolved path it detects and let you map each one to a file in the WordPress Media Library.
 
-Mapped URLs are substituted at render time via the `wmac_rendered_html` filter. The HTML stored in the database is never altered.
+Mapped URLs are substituted at render time via the `wmac_rendered_html` filter at priority 10. The HTML stored in the database is never altered.
 
 ## Merge tags
 
-Embed `{{placeholders}}` anywhere in an artifact's HTML. The **Merge Tags** panel in the Post sidebar lists every detected tag and offers two resolution modes:
+Embed `{{placeholders}}` anywhere in an artifact's HTML. The **Merge Tags** tab in the management metabox lists every detected tag and offers two resolution modes:
 
 | Mode | Behaviour |
 | --- | --- |
-| **Static string** | Admin enters a value in the sidebar. Saved to post meta and substituted at render time with `esc_html()`. |
+| **Static string** | Admin enters a value in the metabox. Saved to post meta and substituted at render time with `esc_html()`. |
 | **Dynamic hook** | The tag is resolved at request time by a PHP filter. The admin marks the tag as dynamic; a developer hooks the filter. |
+
+### Built-in tags
+
+The following tags resolve automatically without any configuration:
+
+| Tag | Resolves to |
+| --- | --- |
+| `{{wp_post_title}}` | Artifact post title |
+| `{{wp_post_id}}` | Artifact post ID |
+| `{{wp_post_url}}` | Artifact permalink |
+| `{{wp_post_date}}` | Published date (site date format) |
+| `{{wp_post_modified_date}}` | Last-modified date (site date format) |
+| `{{wp_post_excerpt}}` | Post excerpt |
+| `{{wp_post_author}}` | Author display name |
+| `{{wp_post_slug}}` | Post slug |
+| `{{wp_site_name}}` | Site name (`bloginfo('name')`) |
+| `{{wp_site_url}}` | Site home URL |
+| `{{wp_site_tagline}}` | Site tagline (`bloginfo('description')`) |
+| `{{wp_current_year}}` | Current four-digit year |
+| `{{wp_current_date}}` | Current date (site date format) |
+
+Built-in resolvers fire via the same `wmac_resolve_tag_*` filter mechanism and can be overridden at any priority.
 
 ### Developer API — dynamic merge tags
 
@@ -114,13 +158,12 @@ All custom routes are under `/wp-json/wmac/v1`.
 Notes:
 
 - Artifact creation and file management endpoints require an authenticated editor for that artifact type.
-- Git webhook endpoint is authenticated by signature/token validation (inside the handler), not by cookie auth.
+- The Git webhook endpoint authenticates via HMAC signature (GitHub: `X-Hub-Signature-256`, GitLab: `X-Gitlab-Token`) rather than cookie auth.
+- Custom CI tools can bypass the Git provider entirely: `POST` a JSON body with `{ "wmac_archive_url": "https://…/build.zip" }` to the same endpoint, secured by your own `Authorization` header or signed URL.
 
 ## Global settings
 
-An admin settings screen is available at:
-
-- `Artifacts -> Settings`
+An admin settings screen is available at **Artifacts → Settings**.
 
 Global defaults currently include:
 
@@ -134,28 +177,35 @@ Global defaults currently include:
 1. **Post type.** Registers a custom post type (`wm_artifact`, labeled "Artifacts") with a locked editor template containing one Artifact Canvas block.
 2. **Storage.** The pasted document is stored as an attribute on the block (or as a protected file on disk for the server-attachment mode), making it the canonical source of truth.
 3. **Interception.** On `template_redirect`, a single-artifact request short-circuits the normal template hierarchy.
-4. **Rendering pipeline.** The plugin reads the stored HTML, then passes it through the `wmac_rendered_html` filter. Built-in subscribers include AssetMapper (priority 10), SeoMeta (priority 20), MergeTags (priority 20), and ClientTracking (priority 30). Third-party code can hook at any priority.
+4. **Rendering pipeline.** The plugin reads the stored HTML, then passes it through the `wmac_rendered_html` filter. Built-in subscribers run in this order: AssetMapper (priority 10), then SeoMeta and MergeTags both at priority 20 (SeoMeta first by registration order), then ClientTracking (priority 30). Third-party code can hook at any priority.
 5. **Output.** Correct content-type and security headers are sent, the HTML is echoed, and the process exits — a 1:1 render. Nothing from WordPress is appended.
 6. **Protected views.** If the post requires a password, a minimal standalone HTML shell with the password form is served instead, still fully isolated from the theme.
 7. **Author toolbar injection (optional).** On passthrough responses, the plugin can inject either a custom management bar or the core admin bar for authorized users without involving the theme template stack.
 8. **Governance and observability.** Public serves fire `wmac_artifact_served`, enabling built-in view counting and optional outbound webhook notifications.
-9. **Alternate routing options.** Artifacts may be served by their own permalink, by custom alias, or by usurping a standard Page URL.
+9. **Alternate routing options.** Artifacts may be served by their own permalink, by a custom alias (`_wmac_alias` via `do_parse_request`), or by usurping a standard Page URL (`template_redirect` priority 5).
+
+## Page usurpation
+
+Any standard WordPress Page can be configured to serve a published artifact at the Page's URL instead of its own content. This lets you use WP's native slug management for a URL while powering it with an artifact.
+
+To configure: open the Page in the editor. A metabox labeled **Artifact Usurpation** appears in the sidebar. Select a published artifact from the dropdown and save the page. The artifact's full render pipeline (password gate, governance, `wmac_rendered_html` filters) applies to the usurped URL.
 
 ## Filter reference
 
 | Filter | Default | Description |
 | --- | --- | --- |
 | `wmac_rendered_html` | — | Passes the full HTML string and `WP_Post` before output. Core extension point for all render-time transformations. |
-| `wmac_noindex` | `true` | Controls the `X-Robots-Tag: noindex` header globally. Override per-artifact via the sidebar. |
-| `wmac_csp` | `''` | Sets a `Content-Security-Policy` header. Empty = no header. Override per-artifact via the sidebar. |
-| `wmac_seo_enabled` | `false` | Enables OG / Twitter Card meta injection. Override per-artifact via the sidebar. |
+| `wmac_noindex` | `true` | Controls the `X-Robots-Tag: noindex` header globally. Override per-artifact via the Settings tab. |
+| `wmac_csp` | `''` | Sets a `Content-Security-Policy` header. Empty = no header. Override per-artifact via the Settings tab. |
+| `wmac_seo_enabled` | `false` | Enables OG / Twitter Card meta injection globally. Override per-artifact via the Settings tab. |
 | `wmac_resolve_tag_{name}` | `''` | Resolves a dynamic merge tag. Receives `($default, $post_id)`. |
 | `wmac_artifact_admin_toolbar_mode` | `'custom'` | `'none'`, `'custom'`, or `'core'`. |
-| `wmac_artifact_admin_toolbar_links` | — | Modify links in the custom admin toolbar. |
+| `wmac_artifact_admin_toolbar_links` | — | Modify the link array for the custom admin toolbar. |
+| `wmac_artifact_admin_toolbar_html` | — | Modify or replace the final toolbar HTML before injection. Receives `($html, $post, $mode)`. |
 | `wmac_max_file_size` | `10485760` | Max bytes for server-side file attachment (default 10 MB). |
-| `wmac_view_webhook_payload` | — | Modify outbound JSON payload posted on public artifact views. |
+| `wmac_view_webhook_payload` | — | Modify the outbound JSON payload posted on public artifact views. |
 | `wmac_view_webhook_sslverify` | `true` | Control TLS verification for outbound view webhooks. |
-| `wmac_git_webhook_token` | `''` | Provide bearer token for private Git archive downloads. |
+| `wmac_git_webhook_token` | `''` | Bearer token for private Git archive downloads. |
 | `wmac_git_webhook_allow_unsigned` | `false` | Allow unsigned Git webhook requests (development only). |
 | `wmac_max_zip_size` | `52428800` | Max uncompressed ZIP size for Git ingestion package validation (50 MB). |
 | `wmac_max_zip_depth` | `5` | Max directory nesting depth allowed in Git ingestion ZIPs. |
@@ -172,6 +222,7 @@ This is a **trusted-author tool**. Hosting arbitrary HTML, CSS, and JavaScript i
 - Because a canvas is served same-origin, its JavaScript can reach same-origin cookies, storage, and endpoints. With a single trusted admin this is fine. If you ever open authoring to multiple or less-trusted users, treat isolated serving (a sandboxed iframe or a separate origin) as a hard requirement, not an option.
 - Static merge tag values are sanitized server-side (`sanitize_text_field`) on save and escaped with `esc_html` at render time. Dynamic merge tag values are the developer's responsibility — filter callbacks must return properly escaped strings for their HTML context.
 - Asset map URLs are sanitized with `esc_url_raw` on save and `esc_url` at render time.
+- The analytics snippet field requires `unfiltered_html` capability to save. Non-admin users see a warning and cannot write to that field.
 
 ## Technical configuration
 
@@ -186,6 +237,8 @@ This is a **trusted-author tool**. Hosting arbitrary HTML, CSS, and JavaScript i
 | Taxonomy key | `wm_client` |
 | Asset map meta key | `_wmac_asset_map` |
 | Tag map meta key | `_wmac_tag_map` |
+| Alias meta key | `_wmac_alias` |
+| Git webhook secret option | `wmac_git_webhook_secret` |
 
 ## Known limitations
 

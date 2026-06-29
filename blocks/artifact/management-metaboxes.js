@@ -1,42 +1,35 @@
-/**
- * Management Metaboxes — Merge Tags & Asset Mapping
- *
- * Does two things:
- *
- *   1. Mounts interactive React apps into the PHP metabox divs rendered by
- *      ManagementMetaboxes.php. Both apps read/write the entity store via
- *      wp.data so changes are captured in the Gutenberg dirty-state and
- *      saved atomically when the user clicks Update.
- *
- *   2. Registers a PluginSidebar ("Artifact Management") accessible from the
- *      editor header's More tools & options (…) menu, giving a second entry
- *      point to the same management UI without scrolling to the metaboxes.
- */
 ( function () {
-	var plugins    = wp.plugins;
-	var editPost   = wp.editPost  || {};
-	var editor     = wp.editor    || {};
 	var element    = wp.element;
 	var components = wp.components;
 	var data       = wp.data;
 	var i18n       = wp.i18n;
 
-	var registerPlugin           = plugins  && plugins.registerPlugin;
-	var PluginSidebar            = editPost.PluginSidebar            || editor.PluginSidebar;
-	var PluginSidebarMoreMenuItem = editPost.PluginSidebarMoreMenuItem || editor.PluginSidebarMoreMenuItem;
+	var createElement   = element.createElement;
+	var useState        = element.useState;
+	var useSelect       = data.useSelect;
+	var useDispatch     = data.useDispatch;
 
-	var createElement  = element.createElement;
-	var Fragment       = element.Fragment;
-	var useState       = element.useState;
-	var useSelect      = data.useSelect;
-	var useDispatch    = data.useDispatch;
-	var Button         = components.Button;
-	var SelectControl  = components.SelectControl;
-	var TextControl    = components.TextControl;
-	var __             = i18n.__;
+	var Button          = components.Button;
+	var SelectControl   = components.SelectControl;
+	var TextControl     = components.TextControl;
+	var TextareaControl = components.TextareaControl;
+	var ToggleControl   = components.ToggleControl;
+	var __              = i18n.__;
 
 	// ---------------------------------------------------------------------------
-	// Helpers
+	// Tabs
+	// ---------------------------------------------------------------------------
+
+	var TABS = [
+		{ id: 'settings',   label: __( 'Settings',      'webmultipliers-wp-artifact-canvas' ) },
+		{ id: 'governance', label: __( 'Governance',    'webmultipliers-wp-artifact-canvas' ) },
+		{ id: 'tracking',   label: __( 'Tracking',      'webmultipliers-wp-artifact-canvas' ) },
+		{ id: 'tags',       label: __( 'Merge Tags',    'webmultipliers-wp-artifact-canvas' ) },
+		{ id: 'assets',     label: __( 'Asset Mapping', 'webmultipliers-wp-artifact-canvas' ) },
+	];
+
+	// ---------------------------------------------------------------------------
+	// Helpers (merge tags / asset path detection)
 	// ---------------------------------------------------------------------------
 
 	function parseMergeTags( html ) {
@@ -68,8 +61,7 @@
 	}
 
 	// ---------------------------------------------------------------------------
-	// Shared data hook — reads entity meta and block HTML from the WP data store.
-	// Works in both the metabox React roots and the PluginSidebar.
+	// Shared data hook — entity meta + block HTML + site URL + snippet capability
 	// ---------------------------------------------------------------------------
 
 	function useArtifactData( postId ) {
@@ -93,6 +85,16 @@
 			return { html: '', fileStored: false };
 		} );
 
+		var siteUrl = useSelect( function ( select ) {
+			var site = select( 'core' ).getSite();
+			return site ? ( site.url || '' ) : '';
+		} );
+
+		var canSaveSnippet = useSelect( function ( select ) {
+			var post = select( 'core/editor' ).getCurrentPost();
+			return !! ( post && post._links && post._links[ 'wp:action-unfiltered-html' ] );
+		} );
+
 		var _dispatch        = useDispatch( 'core' );
 		var editEntityRecord = _dispatch && _dispatch.editEntityRecord;
 
@@ -103,15 +105,172 @@
 		}
 
 		return {
-			meta:       meta,
-			setMeta:    setMeta,
-			html:       _blockData.html,
-			fileStored: _blockData.fileStored,
+			meta:            meta,
+			setMeta:         setMeta,
+			html:            _blockData.html,
+			fileStored:      _blockData.fileStored,
+			siteUrl:         siteUrl,
+			canSaveSnippet:  canSaveSnippet,
 		};
 	}
 
 	// ---------------------------------------------------------------------------
-	// Merge Tags Manager
+	// Settings panel
+	// ---------------------------------------------------------------------------
+
+	function SettingsPanel( props ) {
+		var meta    = props.meta;
+		var setMeta = props.setMeta;
+		var siteUrl = props.siteUrl;
+
+		var alias   = meta[ '_wmac_alias' ]        || '';
+		var noindex = meta[ '_wmac_noindex' ];
+		var seo     = meta[ '_wmac_seo_enabled' ];
+		var csp     = meta[ '_wmac_csp' ]          || '';
+		var prompt  = meta[ '_wmac_prompt' ]       || '';
+
+		function update( key, value ) {
+			setMeta( Object.assign( {}, meta, { [ key ]: value } ) );
+		}
+
+		return createElement(
+			'div',
+			{ className: 'wmac-panel wmac-panel--settings' },
+			createElement( TextControl, {
+				label:                   __( 'Custom URL Alias', 'webmultipliers-wp-artifact-canvas' ),
+				help:                    alias && siteUrl
+					? siteUrl.replace( /\/$/, '' ) + '/' + alias
+					: __( 'Optional. Enter a path (e.g. "pricing") to serve this artifact at that URL on the front end.', 'webmultipliers-wp-artifact-canvas' ),
+				value:                   alias,
+				placeholder:             'e.g. pricing',
+				onChange:                function ( v ) { update( '_wmac_alias', v ); },
+				__nextHasNoMarginBottom: true,
+			} ),
+			createElement( ToggleControl, {
+				label:    __( 'Discourage search engines (noindex)', 'webmultipliers-wp-artifact-canvas' ),
+				help:     __( 'Sends a noindex header. Default is on; toggle off to allow indexing.', 'webmultipliers-wp-artifact-canvas' ),
+				checked:  noindex !== '0',
+				onChange: function ( v ) { update( '_wmac_noindex', v ? '1' : '0' ); },
+			} ),
+			createElement( ToggleControl, {
+				label:    __( 'Inject SEO meta tags', 'webmultipliers-wp-artifact-canvas' ),
+				help:     __( 'Adds og: / twitter: tags from the post title, excerpt, and featured image.', 'webmultipliers-wp-artifact-canvas' ),
+				checked:  seo === '1',
+				onChange: function ( v ) { update( '_wmac_seo_enabled', v ? '1' : '0' ); },
+			} ),
+			createElement( TextControl, {
+				label:                   __( 'Content Security Policy', 'webmultipliers-wp-artifact-canvas' ),
+				help:                    __( 'Per-artifact CSP header. Overrides the global wmac_csp filter. Leave blank to inherit.', 'webmultipliers-wp-artifact-canvas' ),
+				value:                   csp,
+				onChange:                function ( v ) { update( '_wmac_csp', v ); },
+				__nextHasNoMarginBottom: true,
+			} ),
+			createElement( TextareaControl, {
+				label:                   __( 'Generation Prompt', 'webmultipliers-wp-artifact-canvas' ),
+				help:                    __( 'Paste the prompt used to generate this artifact. Private — not published.', 'webmultipliers-wp-artifact-canvas' ),
+				value:                   prompt,
+				rows:                    5,
+				onChange:                function ( v ) { update( '_wmac_prompt', v ); },
+				__nextHasNoMarginBottom: true,
+			} )
+		);
+	}
+
+	// ---------------------------------------------------------------------------
+	// Governance panel
+	// ---------------------------------------------------------------------------
+
+	function GovernancePanel( props ) {
+		var meta    = props.meta;
+		var setMeta = props.setMeta;
+
+		var expiresAt   = meta[ '_wmac_expires_at' ] || '';
+		var maxViews    = meta[ '_wmac_max_views' ];
+		var viewCount   = parseInt( meta[ '_wmac_view_count' ] || '0', 10 );
+		var maxViewsStr = ( maxViews !== undefined && maxViews !== null && Number( maxViews ) > 0 )
+			? String( maxViews )
+			: '';
+
+		function update( key, value ) {
+			setMeta( Object.assign( {}, meta, { [ key ]: value } ) );
+		}
+
+		return createElement(
+			'div',
+			{ className: 'wmac-panel wmac-panel--governance' },
+			createElement( TextControl, {
+				label:                   __( 'Expire after date (UTC)', 'webmultipliers-wp-artifact-canvas' ),
+				help:                    __( 'ISO 8601: 2025-12-31T23:59:59. Leave blank for no date expiry.', 'webmultipliers-wp-artifact-canvas' ),
+				value:                   expiresAt,
+				placeholder:             '2025-12-31T23:59:59',
+				onChange:                function ( v ) { update( '_wmac_expires_at', v ); },
+				__nextHasNoMarginBottom: true,
+			} ),
+			createElement( TextControl, {
+				label:                   __( 'Max public views', 'webmultipliers-wp-artifact-canvas' ),
+				help:                    __( 'Link expires after this many public views. Leave blank or 0 for unlimited.', 'webmultipliers-wp-artifact-canvas' ),
+				value:                   maxViewsStr,
+				type:                    'number',
+				min:                     '0',
+				onChange:                function ( v ) { update( '_wmac_max_views', parseInt( v, 10 ) || 0 ); },
+				__nextHasNoMarginBottom: true,
+			} ),
+			createElement(
+				'p',
+				{ className: 'wmac-view-count' },
+				__( 'Public views: ', 'webmultipliers-wp-artifact-canvas' ),
+				createElement( 'strong', null, String( viewCount ) )
+			)
+		);
+	}
+
+	// ---------------------------------------------------------------------------
+	// Tracking panel
+	// ---------------------------------------------------------------------------
+
+	function TrackingPanel( props ) {
+		var meta           = props.meta;
+		var setMeta        = props.setMeta;
+		var canSaveSnippet = props.canSaveSnippet;
+
+		var snippet    = meta[ '_wmac_tracking_snippet' ] || '';
+		var webhookUrl = meta[ '_wmac_view_webhook_url' ] || '';
+
+		function update( key, value ) {
+			setMeta( Object.assign( {}, meta, { [ key ]: value } ) );
+		}
+
+		return createElement(
+			'div',
+			{ className: 'wmac-panel wmac-panel--tracking' },
+			! canSaveSnippet && createElement(
+				'p',
+				{ className: 'wmac-panel-hint--warning' },
+				__( 'Analytics snippets require administrator (unfiltered_html) privileges to save.', 'webmultipliers-wp-artifact-canvas' )
+			),
+			createElement( TextareaControl, {
+				label:                   __( 'Analytics snippet', 'webmultipliers-wp-artifact-canvas' ),
+				help:                    __( 'Injected before </head> on every serve. Paste a Plausible, Fathom, or custom <script> tag. Requires administrator privileges.', 'webmultipliers-wp-artifact-canvas' ),
+				value:                   snippet,
+				rows:                    5,
+				disabled:                ! canSaveSnippet,
+				onChange:                function ( v ) { update( '_wmac_tracking_snippet', v ); },
+				__nextHasNoMarginBottom: true,
+			} ),
+			createElement( TextControl, {
+				label:                   __( 'View alert webhook URL', 'webmultipliers-wp-artifact-canvas' ),
+				help:                    __( 'Receives a JSON POST each time a public visitor views this artifact. Leave blank to disable.', 'webmultipliers-wp-artifact-canvas' ),
+				value:                   webhookUrl,
+				type:                    'url',
+				placeholder:             'https://hooks.slack.com/…',
+				onChange:                function ( v ) { update( '_wmac_view_webhook_url', v ); },
+				__nextHasNoMarginBottom: true,
+			} )
+		);
+	}
+
+	// ---------------------------------------------------------------------------
+	// Merge Tags manager
 	// ---------------------------------------------------------------------------
 
 	function MergeTagsManager( props ) {
@@ -274,7 +433,7 @@
 	}
 
 	// ---------------------------------------------------------------------------
-	// Asset Mapping Manager
+	// Asset Mapping manager
 	// ---------------------------------------------------------------------------
 
 	function AssetMappingManager( props ) {
@@ -419,110 +578,67 @@
 	}
 
 	// ---------------------------------------------------------------------------
-	// Metabox root components — each owns its own useArtifactData call
+	// Root metabox component — owns tab state, renders the active panel
 	// ---------------------------------------------------------------------------
 
-	function MergeTagsMetabox( props ) {
+	function ArtifactMetabox( props ) {
 		var d = useArtifactData( props.postId );
-		return createElement( MergeTagsManager, { meta: d.meta, setMeta: d.setMeta, html: d.html, fileStored: d.fileStored } );
-	}
 
-	function AssetMappingMetabox( props ) {
-		var d = useArtifactData( props.postId );
-		return createElement( AssetMappingManager, { meta: d.meta, setMeta: d.setMeta, html: d.html, fileStored: d.fileStored } );
-	}
+		var _tabState    = useState( 'settings' );
+		var activeTab    = _tabState[ 0 ];
+		var setActiveTab = _tabState[ 1 ];
 
-	// ---------------------------------------------------------------------------
-	// PluginSidebar — triggered from the editor header (More tools & options …)
-	// ---------------------------------------------------------------------------
+		var panels = {
+			settings:   createElement( SettingsPanel,      { meta: d.meta, setMeta: d.setMeta, siteUrl: d.siteUrl } ),
+			governance: createElement( GovernancePanel,    { meta: d.meta, setMeta: d.setMeta } ),
+			tracking:   createElement( TrackingPanel,      { meta: d.meta, setMeta: d.setMeta, canSaveSnippet: d.canSaveSnippet } ),
+			tags:       createElement( MergeTagsManager,   { meta: d.meta, setMeta: d.setMeta, html: d.html, fileStored: d.fileStored } ),
+			assets:     createElement( AssetMappingManager, { meta: d.meta, setMeta: d.setMeta, html: d.html, fileStored: d.fileStored } ),
+		};
 
-	if ( registerPlugin && PluginSidebar && PluginSidebarMoreMenuItem ) {
-		function ArtifactManagementSidebar() {
-			var postId = useSelect( function ( select ) {
-				return select( 'core/editor' ).getCurrentPostId();
-			} );
-
-			var _tabState    = useState( 'tags' );
-			var activeTab    = _tabState[ 0 ];
-			var setActiveTab = _tabState[ 1 ];
-
-			var d = useArtifactData( postId );
-
-			return createElement(
-				Fragment,
-				null,
-				createElement(
-					PluginSidebarMoreMenuItem,
-					{ target: 'wmac-artifact-management' },
-					__( 'Merge Tags & Assets', 'webmultipliers-wp-artifact-canvas' )
-				),
-				createElement(
-					PluginSidebar,
-					{
-						name:  'wmac-artifact-management',
-						title: __( 'Artifact Management', 'webmultipliers-wp-artifact-canvas' ),
-					},
-					createElement(
-						'div',
-						{ className: 'wmac-sidebar-mgmt' },
-						createElement(
-							'div',
-							{ className: 'wmac-sidebar-mgmt__tabs' },
-							createElement(
-								'button',
-								{
-									type:      'button',
-									className: 'wmac-sidebar-mgmt__tab' + ( activeTab === 'tags' ? ' is-active' : '' ),
-									onClick:   function () { setActiveTab( 'tags' ); },
-								},
-								__( 'Merge Tags', 'webmultipliers-wp-artifact-canvas' )
-							),
-							createElement(
-								'button',
-								{
-									type:      'button',
-									className: 'wmac-sidebar-mgmt__tab' + ( activeTab === 'assets' ? ' is-active' : '' ),
-									onClick:   function () { setActiveTab( 'assets' ); },
-								},
-								__( 'Asset Mapping', 'webmultipliers-wp-artifact-canvas' )
-							)
-						),
-						activeTab === 'tags' && createElement( MergeTagsManager, {
-							meta: d.meta, setMeta: d.setMeta, html: d.html, fileStored: d.fileStored,
-						} ),
-						activeTab === 'assets' && createElement( AssetMappingManager, {
-							meta: d.meta, setMeta: d.setMeta, html: d.html, fileStored: d.fileStored,
-						} )
-					)
-				)
-			);
-		}
-
-		registerPlugin( 'wmac-artifact-management', { render: ArtifactManagementSidebar } );
+		return createElement(
+			'div',
+			{ className: 'wmac-metabox' },
+			createElement(
+				'nav',
+				{ className: 'nav-tab-wrapper wmac-metabox__tabs' },
+				TABS.map( function ( tab ) {
+					return createElement(
+						'button',
+						{
+							key:       tab.id,
+							type:      'button',
+							className: 'nav-tab' + ( activeTab === tab.id ? ' nav-tab-active' : '' ),
+							onClick:   function () { setActiveTab( tab.id ); },
+						},
+						tab.label
+					);
+				} )
+			),
+			createElement(
+				'div',
+				{ className: 'wmac-metabox__panel' },
+				panels[ activeTab ]
+			)
+		);
 	}
 
 	// ---------------------------------------------------------------------------
-	// Mount React into the PHP metabox divs
+	// Mount into the PHP metabox div
 	// ---------------------------------------------------------------------------
 
 	wp.domReady( function () {
-		function mountComponent( elementId, Component ) {
-			var container = document.getElementById( elementId );
-			if ( ! container ) return;
+		var container = document.getElementById( 'wmac-artifact-root' );
+		if ( ! container ) return;
 
-			var postId = parseInt( container.dataset.postId || '0', 10 );
-			var vnode  = createElement( Component, { postId: postId } );
+		var postId = parseInt( container.dataset.postId || '0', 10 );
+		var vnode  = createElement( ArtifactMetabox, { postId: postId } );
 
-			// React 18 (WP 6.3+) uses createRoot; older WP uses render.
-			if ( element.createRoot ) {
-				element.createRoot( container ).render( vnode );
-			} else {
-				element.render( vnode, container );
-			}
+		if ( element.createRoot ) {
+			element.createRoot( container ).render( vnode );
+		} else {
+			element.render( vnode, container );
 		}
-
-		mountComponent( 'wmac-merge-tags-root',    MergeTagsMetabox    );
-		mountComponent( 'wmac-asset-mapping-root', AssetMappingMetabox );
 	} );
 
 } )();

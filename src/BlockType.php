@@ -33,15 +33,6 @@ class BlockType {
 		register_block_type( WMAC_PATH . 'blocks/artifact', [
 			'render_callback' => [ $this, 'render' ],
 		] );
-
-		// editor.js uses wp.coreData.useEntityProp for the bottom management panel.
-		// Formally declare the dependency so WP outputs wp-core-data before the block script.
-		global $wp_scripts;
-		$handle = 'webmultipliers-wp-artifact-canvas-editor-script';
-		if ( isset( $wp_scripts->registered[ $handle ] ) &&
-		     ! in_array( 'wp-core-data', $wp_scripts->registered[ $handle ]->deps, true ) ) {
-			$wp_scripts->registered[ $handle ]->deps[] = 'wp-core-data';
-		}
 	}
 
 	/**

@@ -22,8 +22,9 @@ class Plugin {
 	private ArtifactMeta  $artifact_meta;
 	private ArtifactAlias $artifact_alias;
 	private Settings      $settings;
-	private AssetMapper   $asset_mapper;
-	private MergeTags     $merge_tags;
+	private AssetMapper          $asset_mapper;
+	private MergeTags            $merge_tags;
+	private ManagementMetaboxes  $management_metaboxes;
 
 	// Phase A — DAM foundation
 	private ClientTaxonomy  $client_taxonomy;
@@ -69,8 +70,9 @@ class Plugin {
 		$this->artifact_meta  = new ArtifactMeta();
 		$this->artifact_alias = new ArtifactAlias();
 		$this->settings       = new Settings();
-		$this->asset_mapper   = new AssetMapper();
-		$this->merge_tags     = new MergeTags();
+		$this->asset_mapper          = new AssetMapper();
+		$this->merge_tags            = new MergeTags();
+		$this->management_metaboxes  = new ManagementMetaboxes();
 
 		$this->post_type->register_hooks();
 		$this->block_type->register_hooks();
@@ -87,6 +89,7 @@ class Plugin {
 		$this->settings->register_hooks();
 		$this->asset_mapper->register_hooks();
 		$this->merge_tags->register_hooks();
+		$this->management_metaboxes->register_hooks();
 
 		// --- Phase A — DAM foundation ---
 		$this->client_taxonomy  = new ClientTaxonomy();

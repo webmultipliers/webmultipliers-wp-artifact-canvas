@@ -2,7 +2,7 @@
     "$schema": "https://schemas.wp.org/trunk/block.json",
     "apiVersion": 3,
     "name": "wmac/artifact",
-    "version": "0.3.0",
+    "version": "0.5.1",
     "title": "Artifact Canvas",
     "category": "text",
     "description": "Stores a complete HTML document and serves it as a passthrough canvas on the front end.",

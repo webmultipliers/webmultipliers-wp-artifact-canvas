@@ -1,15 +1,66 @@
-/* Loading placeholder inside the PHP metabox divs */
+/* Loading placeholder */
 .wmac-metabox-loading {
 	color: #757575;
 	font-style: italic;
 	margin: 8px 0;
 }
 
-/* ---- Shared management UI ---- */
+/* ---- Metabox shell ---- */
 
-.wmac-mgmt {
-	padding: 4px 0 8px;
+.wmac-metabox {
+	margin: -6px -12px -12px;
 }
+
+.wmac-metabox__tabs {
+	padding: 0 12px;
+	margin-bottom: 0;
+}
+
+.wmac-metabox__tabs .nav-tab {
+	/* reset <button> browser defaults without overriding WP's nav-tab border/background */
+	cursor: pointer;
+	font: inherit;
+	-webkit-appearance: none;
+	appearance: none;
+}
+
+.wmac-metabox__panel {
+	padding: 20px 16px 12px;
+}
+
+/* ---- Generic panel layout ---- */
+
+.wmac-panel {
+	display: flex;
+	flex-direction: column;
+	gap: 20px;
+	max-width: 680px;
+}
+
+/* ---- Governance: view count readout ---- */
+
+.wmac-view-count {
+	font-size: 13px;
+	color: #3c434a;
+	margin: 0;
+	padding: 12px 0 0;
+	border-top: 1px solid #e0e0e0;
+}
+
+/* ---- Tracking: permission warning ---- */
+
+.wmac-panel-hint--warning {
+	color: #996b00;
+	background: #fff8e6;
+	border: 1px solid #f0c000;
+	border-radius: 2px;
+	padding: 8px 10px;
+	margin: 0;
+	font-size: 13px;
+	line-height: 1.5;
+}
+
+/* ---- Shared management table (Merge Tags / Asset Mapping) ---- */
 
 .wmac-mgmt__note {
 	background: #f0f6fc;
@@ -25,8 +76,6 @@
 	font-size: 13px;
 	margin: 0 0 12px;
 }
-
-/* ---- Table layout for tag/asset rows ---- */
 
 .wmac-mgmt__table {
 	width: 100%;
@@ -82,7 +131,7 @@
 }
 
 .wmac-mgmt__asset-url-cell {
-	max-width: 260px;
+	max-width: 400px;
 	overflow: hidden;
 }
 
@@ -155,57 +204,5 @@
 	height: 28px !important;
 	min-height: 28px !important;
 	font-size: 12px;
-	min-width: 160px;
-}
-
-/* ---- PluginSidebar tab strip ---- */
-
-.wmac-sidebar-mgmt {
-	padding: 0;
-}
-
-.wmac-sidebar-mgmt__tabs {
-	display: flex;
-	border-bottom: 1px solid #e0e0e0;
-	background: #fff;
-	position: sticky;
-	top: 0;
-	z-index: 1;
-}
-
-.wmac-sidebar-mgmt__tab {
-	flex: 1;
-	padding: 10px 8px;
-	font-size: 12px;
-	font-weight: 500;
-	background: none;
-	border: none;
-	border-bottom: 2px solid transparent;
-	cursor: pointer;
-	color: #757575;
-	margin-bottom: -1px;
-	text-align: center;
-}
-
-.wmac-sidebar-mgmt__tab:hover {
-	color: #1e1e1e;
-}
-
-.wmac-sidebar-mgmt__tab.is-active {
-	color: #1e1e1e;
-	border-bottom-color: #3858e9;
-}
-
-.wmac-sidebar-mgmt .wmac-mgmt {
-	padding: 12px 16px;
-}
-
-/* Wider table columns in the sidebar (narrower viewport) */
-.wmac-sidebar-mgmt .wmac-mgmt__table .components-text-control__input {
-	min-width: 0;
-	width: 100%;
-}
-
-.wmac-sidebar-mgmt .wmac-mgmt__asset-url-cell {
-	max-width: 120px;
+	min-width: 200px;
 }
