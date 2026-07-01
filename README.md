@@ -27,8 +27,8 @@ It exists because WordPress is excellent at access control, URLs, revisions, and
 - **A purpose-built editing block.** A single locked block per canvas with a syntax-highlighted CodeMirror editor (no rich text, no paste-to-blocks transforms) so a wholesale paste stays raw. The raw HTML is stored as the block's source of truth, not as fragile inner markup.
 - **Sandboxed editor preview.** The artifact previews inside an isolated `<iframe>` in the editor, so its CSS and JS never leak into wp-admin.
 - **File upload and server-side attachment.** Load an artifact from a local `.html` file directly in the editor. Optionally attach the file to the server so large artifacts don't consume block-attribute storage.
-- **Media Library asset mapping.** Artifacts that reference relative paths (`src="assets/logo.png"`) can have those paths mapped to Media Library URLs via the management metabox. Replacement happens at render time — the stored HTML is never modified.
-- **Merge tag templating.** Embed `{{tag_name}}` placeholders in an artifact's HTML and configure each tag's value in the management metabox. Thirteen built-in tags resolve WP post and site data automatically. Custom tags support static string replacement or server-side dynamic resolution via a PHP filter hook — no code inside the HTML required.
+- **Media Library asset mapping.** Artifacts that reference relative paths (`src="assets/logo.png"`) can have those paths mapped to Media Library URLs via the Asset Mapping metabox. Replacement happens at render time — the stored HTML is never modified.
+- **Merge tag templating.** Embed `{{tag_name}}` placeholders in an artifact's HTML and configure each tag's value in the Merge Tags metabox. Thirteen built-in tags resolve WP post and site data automatically. Custom tags support static string replacement or server-side dynamic resolution via a PHP filter hook — no code inside the HTML required.
 - **Access rules honored.** Draft, private, password-protected, and scheduled canvases behave the way any WordPress post would. Password-protected canvases get a clean, theme-free entry screen.
 - **Capability-aware sanitization.** Authors without the capability to post raw markup have their content run through `wp_kses_post` on save, the same as core.
 - **oEmbed provider.** Paste any published artifact URL into another Gutenberg editor and it embeds as a live iframe.
@@ -81,27 +81,29 @@ Two quick-reference panels appear in the Post sidebar (Document tab):
 - **Lifecycle Status** — set draft/pending/publish/private or a custom status (In Review, Approved, Archived)
 - **Ownership** — assign a responsible developer or project manager (WP user)
 
-### Management metabox
+### Management metaboxes
 
-A full-width tabbed metabox appears below the code editor with five tabs. All changes save atomically with the rest of the post when you click **Update**.
+Five full-width metaboxes appear below the code editor, one per concern. Each is a standalone PHP `add_meta_box()` — not a single tabbed panel — so every section gets its own scroll position and heading.
 
-| Tab | Fields |
+| Metabox | Fields |
 | --- | --- |
-| **Settings** | Custom URL alias, noindex override, SEO meta injection toggle, Content Security Policy, generation prompt |
-| **Governance** | Expiry date (ISO 8601), max public views, live view count (read-only) |
-| **Tracking** | Analytics snippet (injected before `</head>`), view alert webhook URL |
+| **Artifact Settings** | Custom URL alias, noindex override, SEO meta injection toggle, Content Security Policy, generation prompt |
+| **Link Governance** | Expiry date (ISO 8601), max public views, live view count (read-only) |
+| **Tracking & Webhooks** | Analytics snippet (injected before `</head>`), view alert webhook URL |
 | **Merge Tags** | Detect and configure `{{tag}}` placeholders — set static replacement values or mark tags as dynamic |
 | **Asset Mapping** | Detect unresolved relative paths and map each to a Media Library file |
 
+**Autosave, not "click Update."** Every field in these metaboxes saves itself: text and textarea fields PATCH their value to the REST API a moment after you stop typing (or on blur), checkboxes and selects save immediately on change, and the Merge Tags / Asset Mapping tables save their full map on every add, edit, or remove. A small status line under each metabox shows *Saving…* / *Saved*. This is deliberate, not just a convenience — WordPress renders these metaboxes inside a separate iframe with no block editor instance, so the block editor's "Update" save (and its underlying `wp.data` stores) never actually reaches this content; direct REST calls are the only reliable path. Detected `{{tags}}` and relative asset paths are parsed server-side from the artifact's last-saved HTML, so newly pasted placeholders appear after you update the block content itself.
+
 ## Asset mapping
 
-If the artifact references relative paths — `<img src="images/logo.png">`, `<link href="theme.css">` — the **Asset Mapping** tab in the management metabox will list every unresolved path it detects and let you map each one to a file in the WordPress Media Library.
+If the artifact references relative paths — `<img src="images/logo.png">`, `<link href="theme.css">` — the **Asset Mapping** metabox below the editor will list every unresolved path it detects and let you map each one to a file in the WordPress Media Library.
 
 Mapped URLs are substituted at render time via the `wmac_rendered_html` filter at priority 10. The HTML stored in the database is never altered.
 
 ## Merge tags
 
-Embed `{{placeholders}}` anywhere in an artifact's HTML. The **Merge Tags** tab in the management metabox lists every detected tag and offers two resolution modes:
+Embed `{{placeholders}}` anywhere in an artifact's HTML. The **Merge Tags** metabox below the editor lists every detected tag and offers two resolution modes:
 
 | Mode | Behaviour |
 | --- | --- |

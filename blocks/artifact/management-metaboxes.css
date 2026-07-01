@@ -1,40 +1,76 @@
-/* Loading placeholder */
-.wmac-metabox-loading {
-	color: #757575;
-	font-style: italic;
-	margin: 8px 0;
-}
-
 /* ---- Metabox shell ---- */
 
 .wmac-metabox {
-	margin: -6px -12px -12px;
-}
-
-.wmac-metabox__tabs {
-	padding: 0 12px;
-	margin-bottom: 0;
-}
-
-.wmac-metabox__tabs .nav-tab {
-	/* reset <button> browser defaults without overriding WP's nav-tab border/background */
-	cursor: pointer;
-	font: inherit;
-	-webkit-appearance: none;
-	appearance: none;
-}
-
-.wmac-metabox__panel {
-	padding: 20px 16px 12px;
-}
-
-/* ---- Generic panel layout ---- */
-
-.wmac-panel {
 	display: flex;
 	flex-direction: column;
-	gap: 20px;
+	gap: 16px;
 	max-width: 680px;
+}
+
+/* ---- Generic field ---- */
+
+.wmac-field {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+}
+
+.wmac-field--checkbox {
+	flex-direction: row;
+	flex-wrap: wrap;
+}
+
+.wmac-field--checkbox label {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+}
+
+.wmac-field--checkbox .wmac-field__help {
+	flex-basis: 100%;
+	margin-left: 22px;
+}
+
+.wmac-field__label {
+	font-weight: 600;
+	font-size: 13px;
+	color: #1e1e1e;
+}
+
+.wmac-field__input {
+	box-sizing: border-box;
+	width: 100%;
+	max-width: 100%;
+	padding: 6px 8px;
+	border: 1px solid #757575;
+	border-radius: 2px;
+	font-size: 13px;
+	line-height: 1.4;
+}
+
+.wmac-field__textarea {
+	resize: vertical;
+	font-family: inherit;
+}
+
+.wmac-field__help {
+	margin: 0;
+	color: #757575;
+	font-size: 11px;
+	line-height: 1.5;
+}
+
+/* ---- Save status ---- */
+
+.wmac-save-status {
+	margin: 0;
+	min-height: 16px;
+	font-size: 11px;
+	color: #007017;
+}
+
+.wmac-save-status--error {
+	color: #d63638;
 }
 
 /* ---- Governance: view count readout ---- */
@@ -49,7 +85,7 @@
 
 /* ---- Tracking: permission warning ---- */
 
-.wmac-panel-hint--warning {
+.wmac-field-hint--warning {
 	color: #996b00;
 	background: #fff8e6;
 	border: 1px solid #f0c000;
@@ -160,28 +196,13 @@
 	white-space: nowrap;
 }
 
-/* Compact WP form controls inside table cells */
-.wmac-mgmt__table .components-base-control {
-	margin: 0;
-}
-
-.wmac-mgmt__table .components-base-control__field {
-	margin: 0;
-}
-
-.wmac-mgmt__table .components-select-control__input,
-.wmac-mgmt__table select {
-	height: 28px !important;
-	min-height: 28px !important;
+.wmac-mgmt__table select,
+.wmac-mgmt__table input[type="text"] {
+	height: 28px;
 	font-size: 12px;
-	padding-top: 0;
-	padding-bottom: 0;
-}
-
-.wmac-mgmt__table .components-text-control__input {
-	height: 28px !important;
-	min-height: 28px !important;
-	font-size: 12px;
+	padding: 0 6px;
+	border: 1px solid #757575;
+	border-radius: 2px;
 }
 
 /* ---- Add row ---- */
@@ -192,17 +213,11 @@
 	gap: 8px;
 }
 
-.wmac-mgmt__add .components-base-control {
-	margin: 0;
-}
-
-.wmac-mgmt__add .components-base-control__field {
-	margin: 0;
-}
-
-.wmac-mgmt__add .components-text-control__input {
-	height: 28px !important;
-	min-height: 28px !important;
-	font-size: 12px;
+.wmac-mgmt__add input[type="text"] {
+	height: 28px;
 	min-width: 200px;
+	font-size: 12px;
+	padding: 0 6px;
+	border: 1px solid #757575;
+	border-radius: 2px;
 }
