@@ -109,7 +109,11 @@
 				value:                   currentValue,
 				type:                    'number',
 				onChange:                function ( v ) {
-					setMeta( Object.assign( {}, meta, { _wmac_owner_id: parseInt( v, 10 ) || 0 } ) );
+					// Pass ONLY the changed key. Passing the whole meta object
+					// marks every key as a pending edit, so the next editor
+					// Update overwrites anything the metaboxes saved via REST
+					// (merge tags, asset map, …) with stale page-load values.
+					setMeta( { _wmac_owner_id: parseInt( v, 10 ) || 0 } );
 				},
 				__nextHasNoMarginBottom: true,
 			} );
@@ -124,7 +128,8 @@
 				options:                 userOptions,
 				allowReset:              true,
 				onChange:                function ( v ) {
-					setMeta( Object.assign( {}, meta, { _wmac_owner_id: parseInt( v, 10 ) || 0 } ) );
+					// Only the changed key — see the note in the TextControl fallback.
+					setMeta( { _wmac_owner_id: parseInt( v, 10 ) || 0 } );
 				},
 				onFilterValueChange:     function () {},
 				__nextHasNoMarginBottom: true,

@@ -35,17 +35,10 @@ class SeoMeta {
 			return $html;
 		}
 
-		$count  = 0;
-		$result = preg_replace_callback(
-			'/<\/head>/i',
-			static function ( array $m ) use ( $tags ): string {
-				return $tags . $m[0];
-			},
-			$html,
-			1,
-			$count
-		);
-		return ( $count > 0 && is_string( $result ) ) ? $result : $html;
+		// Same insertion rules as every other head injection: before </head>
+		// when present, prepended otherwise — documents without a closing
+		// head marker must not silently lose their meta tags.
+		return Renderer::inject_into_head( $html, $tags );
 	}
 
 	private function build_meta_tags( \WP_Post $post ): string {
@@ -53,7 +46,13 @@ class SeoMeta {
 		$permalink = get_permalink( $post->ID );
 		$title     = get_the_title( $post->ID );
 		$site_name = get_bloginfo( 'name' );
-		$excerpt   = trim( wp_strip_all_tags( $post->post_excerpt ) );
+		// The dedicated description meta wins; the excerpt is the fallback
+		// (GitWebhook repurposes the excerpt as a deploy breadcrumb, so it is
+		// not a reliable description source). Search engines truncate
+		// descriptions around 160 characters; cap the output accordingly.
+		$description = trim( (string) get_post_meta( $post->ID, ArtifactMeta::DESCRIPTION, true ) );
+		$excerpt     = $description !== '' ? $description : trim( wp_strip_all_tags( $post->post_excerpt ) );
+		$excerpt     = wp_html_excerpt( $excerpt, 160, '…' );
 
 		if ( $title !== '' ) {
 			$tags .= sprintf(

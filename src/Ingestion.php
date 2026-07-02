@@ -47,7 +47,7 @@ class Ingestion {
 				'callback'            => array( $this, 'rest_create' ),
 				'permission_callback' => array( $this, 'check_permission' ),
 				'args'                => array(
-					'html'  => array(
+					'html'   => array(
 						'required'          => true,
 						'type'              => 'string',
 						'sanitize_callback' => static function ( $v ): string {
@@ -57,11 +57,21 @@ class Ingestion {
 							return is_string( $v ) && trim( $v ) !== '';
 						},
 					),
-					'title' => array(
+					'title'  => array(
 						'required'          => false,
 						'type'              => 'string',
 						'default'           => '',
 						'sanitize_callback' => 'sanitize_text_field',
+						'validate_callback' => static function ( $v ): bool {
+							return is_string( $v ) && mb_strlen( $v ) <= 200;
+						},
+					),
+					'status' => array(
+						'required'          => false,
+						'type'              => 'string',
+						'default'           => 'draft',
+						'enum'              => array( 'draft', 'pending', 'publish' ),
+						'sanitize_callback' => 'sanitize_key',
 					),
 				),
 			)
@@ -92,8 +102,28 @@ class Ingestion {
 	}
 
 	public function rest_create( \WP_REST_Request $request ): \WP_REST_Response|\WP_Error {
-		$html  = (string) $request->get_param( 'html' );
-		$title = (string) $request->get_param( 'title' );
+		$html   = (string) $request->get_param( 'html' );
+		$title  = (string) $request->get_param( 'title' );
+		$status = (string) $request->get_param( 'status' );
+
+		if ( ! in_array( $status, array( 'draft', 'pending', 'publish' ), true ) ) {
+			$status = 'draft';
+		}
+
+		// Publishing straight from the pipeline needs the explicit publish
+		// capability, not just edit_posts.
+		if ( $status === 'publish' ) {
+			$post_type_object = get_post_type_object( PostType::KEY );
+			$publish_cap      = $post_type_object ? $post_type_object->cap->publish_posts : 'publish_posts';
+
+			if ( ! current_user_can( $publish_cap ) ) {
+				return new \WP_Error(
+					'wmac_cannot_publish',
+					__( 'You do not have permission to publish artifacts; omit status or use "draft".', 'webmultipliers-wp-artifact-canvas' ),
+					array( 'status' => 403 )
+				);
+			}
+		}
 
 		if ( $title === '' ) {
 			$title = sprintf(
@@ -116,12 +146,17 @@ class Ingestion {
 			)
 		);
 
+		// wp_insert_post expects slashed data; the block-attribute JSON is
+		// full of backslash escapes that wp_unslash would otherwise strip,
+		// corrupting the serialized block.
 		$post_id = wp_insert_post(
-			array(
-				'post_type'    => PostType::KEY,
-				'post_title'   => $title,
-				'post_content' => $block_content,
-				'post_status'  => 'draft',
+			wp_slash(
+				array(
+					'post_type'    => PostType::KEY,
+					'post_title'   => $title,
+					'post_content' => $block_content,
+					'post_status'  => $status,
+				)
 			),
 			true
 		);
@@ -142,9 +177,10 @@ class Ingestion {
 			array(
 				'id'          => $post_id,
 				'title'       => get_the_title( $post_id ),
-				'status'      => 'draft',
+				'status'      => $status,
 				'edit_url'    => $edit_url,
 				'preview_url' => $preview_url,
+				'url'         => $status === 'publish' ? ( get_permalink( $post_id ) ?: '' ) : '',
 			),
 			201
 		);

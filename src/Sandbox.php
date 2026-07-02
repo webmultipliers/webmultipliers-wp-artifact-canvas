@@ -52,13 +52,16 @@ class Sandbox {
 		add_filter( 'preview_post_link', array( $this, 'filter_preview_link' ), 20 );
 		add_filter( 'rest_url', array( $this, 'filter_rest_url' ), 10, 2 );
 
-		// Main-origin artifact requests → sandbox.
-		add_action( 'template_redirect', array( $this, 'redirect_main_origin_requests' ), 0 );
+		// Main-origin artifact requests → sandbox. Hooked to 'wp' — the
+		// earliest point where the main query is resolved — instead of
+		// template_redirect priority 0, where security and redirect plugins
+		// commonly register and could race ahead of the origin gate.
+		add_action( 'wp', array( $this, 'redirect_main_origin_requests' ), 0 );
 
 		// Sandbox-host lockdown.
 		if ( self::is_sandbox_request() ) {
 			add_filter( 'determine_current_user', '__return_zero', 100 );
-			add_action( 'template_redirect', array( $this, 'block_non_artifact_requests' ), 0 );
+			add_action( 'wp', array( $this, 'block_non_artifact_requests' ), 0 );
 			add_action( 'login_init', array( $this, 'restrict_login' ), 0 );
 			add_filter( 'rest_pre_dispatch', array( $this, 'restrict_rest_routes' ), 0, 3 );
 			add_filter( 'the_password_form', array( $this, 'rewrite_password_form_action' ), 20 );
@@ -162,7 +165,19 @@ class Sandbox {
 			return $link;
 		}
 
-		return str_replace( '://' . $sandbox, '://' . $home, $link );
+		// Structured host comparison instead of literal '://host' matching so
+		// protocol-relative links and non-default ports translate too.
+		$parsed = wp_parse_url( $link );
+		if ( ! is_array( $parsed ) || empty( $parsed['host'] ) ) {
+			return $link; // Relative link — already main-origin.
+		}
+
+		$link_host = $parsed['host'] . ( empty( $parsed['port'] ) ? '' : ':' . $parsed['port'] );
+		if ( self::normalize_host( $link_host ) !== $sandbox ) {
+			return $link;
+		}
+
+		return str_replace( '//' . $link_host, '//' . $home, $link );
 	}
 
 	/**
@@ -282,7 +297,20 @@ class Sandbox {
 			return;
 		}
 
-		wp_safe_redirect( wp_login_url(), 302 );
+		$target = wp_login_url();
+
+		// If site_url resolves to the sandbox host (misconfiguration), the
+		// redirect would land right back in this hook and loop the browser
+		// to death — refuse the request instead.
+		if ( self::normalize_host( $target ) === self::host() ) {
+			status_header( 403 );
+			nocache_headers();
+			header( 'Content-Type: text/plain; charset=utf-8' );
+			echo 'Login is disabled on the artifact sandbox origin.';
+			exit;
+		}
+
+		wp_safe_redirect( $target, 302 );
 		exit;
 	}
 
@@ -324,15 +352,41 @@ class Sandbox {
 	 * origin by default; rewrite it so the postpass cookie is set for the
 	 * sandbox host the visitor is actually on.
 	 *
+	 * Rewrites the form's action attribute structurally (absolute,
+	 * protocol-relative, and root-relative forms) rather than relying on a
+	 * literal '://host/' substring, which silently misses relative actions
+	 * introduced by other plugins and leaks the password POST to the main
+	 * origin.
+	 *
 	 * @param string $form The password form markup.
 	 */
 	public function rewrite_password_form_action( string $form ): string {
-		$main = self::normalize_host( site_url() );
-		if ( $main === '' ) {
+		$sandbox = self::host();
+		if ( $sandbox === '' ) {
 			return $form;
 		}
 
-		return str_replace( '://' . $main . '/', '://' . self::host() . '/', $form );
+		$scheme = is_ssl() ? 'https' : 'http';
+
+		return (string) preg_replace_callback(
+			'#(<form\b[^>]*\baction\s*=\s*)(["\'])([^"\']*)\2#i',
+			static function ( array $m ) use ( $sandbox, $scheme ): string {
+				$action = html_entity_decode( $m[3], ENT_QUOTES );
+				$parsed = wp_parse_url( $action );
+
+				if ( is_array( $parsed ) && ! empty( $parsed['host'] ) ) {
+					$original = $parsed['host'] . ( empty( $parsed['port'] ) ? '' : ':' . $parsed['port'] );
+					$action   = str_replace( '//' . $original, '//' . $sandbox, $action );
+				} elseif ( str_starts_with( $action, '/' ) ) {
+					$action = $scheme . '://' . $sandbox . $action;
+				} else {
+					return $m[0]; // Empty or unrecognised action — leave untouched.
+				}
+
+				return $m[1] . $m[2] . esc_url( $action ) . $m[2];
+			},
+			$form
+		);
 	}
 
 	/**

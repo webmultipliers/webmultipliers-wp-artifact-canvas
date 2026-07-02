@@ -219,6 +219,11 @@ class PdfRenderer {
 		  if (e.key === 'ArrowRight' || e.key === 'ArrowDown')  go(pageNum + 1);
 		  if (e.key === 'ArrowLeft'  || e.key === 'ArrowUp')    go(pageNum - 1);
 		});
+		let resizeTimer = null;
+		window.addEventListener('resize', () => {
+		  clearTimeout(resizeTimer);
+		  resizeTimer = setTimeout(() => { if (pdf && !rendering) renderPage(pageNum); }, 150);
+		});
 		</script>
 		</body>
 		</html>
@@ -251,7 +256,15 @@ class PdfRenderer {
 		$post_id = absint( $request->get_param( 'id' ) );
 		$post    = get_post( $post_id );
 
-		if ( ! $post || $post->post_type !== PostType::KEY || $post->post_status !== 'publish' ) {
+		if ( ! $post || $post->post_type !== PostType::KEY ) {
+			status_header( 404 );
+			exit;
+		}
+
+		// Editors with edit rights may stream non-published artifacts so the
+		// Preview flow works for drafts, pending, and custom statuses; the
+		// public needs a published post.
+		if ( $post->post_status !== 'publish' && ! current_user_can( 'edit_post', $post_id ) ) {
 			status_header( 404 );
 			exit;
 		}
@@ -261,22 +274,91 @@ class PdfRenderer {
 			exit;
 		}
 
+		// The expiry / max-view rules that gate the viewer shell must also
+		// gate the raw byte stream, or a direct REST request bypasses them.
+		if ( ( new LinkGovernance() )->is_expired( $post ) ) {
+			status_header( 410 );
+			exit;
+		}
+
 		$pdf_path = self::get_pdf_path( $post_id );
 		if ( ! $pdf_path || ! is_readable( $pdf_path ) ) {
 			status_header( 404 );
 			exit;
 		}
 
+		$this->stream_pdf( $pdf_path, $post_id );
+	}
+
+	/**
+	 * Streams the PDF with HTTP Range support (single ranges) so PDF.js can
+	 * fetch pages progressively instead of downloading the whole binary
+	 * before first render.
+	 */
+	private function stream_pdf( string $pdf_path, int $post_id ): void {
+		// phpcs:disable WordPress.WP.AlternativeFunctions -- byte streaming; WP_Filesystem adds nothing here.
+		// phpcs:disable WordPress.Security.EscapeOutput.OutputNotEscaped -- raw binary output.
 		$size = filesize( $pdf_path );
+
 		header( 'Content-Type: application/pdf' );
 		header( 'Content-Disposition: inline; filename="artifact-' . $post_id . '.pdf"' );
 		header( 'Cache-Control: no-store' );
 		header( 'X-Robots-Tag: noindex,nofollow' );
-		if ( $size !== false ) {
-			header( 'Content-Length: ' . $size );
+
+		if ( $size === false ) {
+			readfile( $pdf_path );
+			exit;
 		}
-		// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_readfile
-		readfile( $pdf_path );
+
+		header( 'Accept-Ranges: bytes' );
+
+		$range = isset( $_SERVER['HTTP_RANGE'] ) ? (string) wp_unslash( $_SERVER['HTTP_RANGE'] ) : '';
+		if ( $range === ''
+			|| preg_match( '/^bytes=(\d*)-(\d*)$/', $range, $m ) !== 1
+			|| ( $m[1] === '' && $m[2] === '' )
+		) {
+			header( 'Content-Length: ' . $size );
+			readfile( $pdf_path );
+			exit;
+		}
+
+		if ( $m[1] === '' ) {
+			// Suffix range: the last N bytes.
+			$length = min( (int) $m[2], $size );
+			$start  = $size - $length;
+			$end    = $size - 1;
+		} else {
+			$start = (int) $m[1];
+			$end   = ( $m[2] === '' ) ? $size - 1 : min( (int) $m[2], $size - 1 );
+		}
+
+		if ( $start > $end || $start >= $size ) {
+			status_header( 416 );
+			header( 'Content-Range: bytes */' . $size );
+			exit;
+		}
+
+		status_header( 206 );
+		header( 'Content-Range: bytes ' . $start . '-' . $end . '/' . $size );
+		header( 'Content-Length: ' . ( $end - $start + 1 ) );
+
+		$fh = fopen( $pdf_path, 'rb' );
+		if ( $fh === false ) {
+			exit;
+		}
+
+		fseek( $fh, $start );
+		$remaining = $end - $start + 1;
+		while ( $remaining > 0 && ! feof( $fh ) ) {
+			$chunk = fread( $fh, (int) min( 131072, $remaining ) );
+			if ( $chunk === false || $chunk === '' ) {
+				break;
+			}
+			echo $chunk;
+			$remaining -= strlen( $chunk );
+		}
+		fclose( $fh );
+		// phpcs:enable
 		exit;
 	}
 
@@ -327,6 +409,8 @@ class PdfRenderer {
 
 		update_post_meta( $post_id, self::FORMAT_META, self::FORMAT_PDF );
 
+		ArtifactFile::signal_content_updated( $post_id );
+
 		return new \WP_REST_Response( array( 'stored' => true ), 200 );
 	}
 
@@ -336,6 +420,8 @@ class PdfRenderer {
 		ArtifactFile::delete_files( $post_id, 'pdf' );
 
 		delete_post_meta( $post_id, self::FORMAT_META );
+
+		ArtifactFile::signal_content_updated( $post_id );
 
 		return new \WP_REST_Response( array( 'removed' => true ), 200 );
 	}

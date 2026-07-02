@@ -20,6 +20,24 @@ class ArtifactAlias {
 	const META_KEY  = '_wmac_alias';
 	const TRANSIENT = 'wmac_alias_map';
 
+	/**
+	 * First path segments that may never be aliased: shadowing them would
+	 * intercept core endpoints or existing plugin routes.
+	 */
+	const RESERVED_SEGMENTS = array(
+		'wp-admin',
+		'wp-content',
+		'wp-includes',
+		'wp-json',
+		'wp-login.php',
+		'artifact',
+		'feed',
+		'embed',
+		'sitemap.xml',
+		'robots.txt',
+		'favicon.ico',
+	);
+
 	public function register_hooks(): void {
 		add_action( 'init', array( $this, 'register_meta' ) );
 		add_filter( 'do_parse_request', array( $this, 'maybe_hijack_request' ), 1, 2 );
@@ -47,7 +65,9 @@ class ArtifactAlias {
 	}
 
 	/**
-	 * Normalises an alias value: lowercase, only a-z 0-9 - _ /, no leading/trailing slashes.
+	 * Normalises an alias value: lowercase, only a-z 0-9 - _ /, no
+	 * leading/trailing slashes. Aliases whose first segment would shadow a
+	 * core endpoint are rejected (stored as '').
 	 *
 	 * @param mixed $value Raw meta value.
 	 */
@@ -57,7 +77,14 @@ class ArtifactAlias {
 		$value = preg_replace( '/[^a-z0-9\-_\/]/', '-', $value ) ?? '';
 		$value = preg_replace( '/\/+/', '/', $value ) ?? '';
 		$value = preg_replace( '/-+/', '-', $value ) ?? '';
-		return trim( $value, '-/ ' );
+		$value = trim( $value, '-/ ' );
+
+		$first = explode( '/', $value )[0];
+		if ( in_array( $first, self::RESERVED_SEGMENTS, true ) ) {
+			return '';
+		}
+
+		return $value;
 	}
 
 	/**
@@ -70,7 +97,9 @@ class ArtifactAlias {
 			return false;
 		}
 
-		$path = $this->get_request_path();
+		// Stored aliases are lowercased by sanitize_alias(); lowercase the
+		// incoming path too so /Pricing and /PRICING resolve like /pricing.
+		$path = strtolower( $this->get_request_path() );
 		if ( $path === '' ) {
 			return true;
 		}

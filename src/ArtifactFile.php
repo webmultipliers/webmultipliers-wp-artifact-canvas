@@ -23,6 +23,12 @@ class ArtifactFile {
 
 	private const PROBE_TRANSIENT = 'wmac_file_protection_probe';
 
+	/**
+	 * Post meta persisting the filename token, so filenames written after
+	 * this version survive an auth-salt rotation (see file_token()).
+	 */
+	public const TOKEN_META = '_wmac_file_token';
+
 	public function register_hooks(): void {
 		add_action( 'rest_api_init', array( $this, 'register_routes' ) );
 		add_action( 'before_delete_post', array( $this, 'cleanup_on_delete' ) );
@@ -146,14 +152,33 @@ class ArtifactFile {
 			);
 		}
 
+		// Uploads from authors without unfiltered_html must pass through KSES
+		// in a single memory buffer; running it over multi-megabyte documents
+		// risks exhausting the PHP memory limit or the request worker. Cap
+		// those uploads lower instead of attempting the transform.
+		if ( ! current_user_can( 'unfiltered_html' ) ) {
+			$kses_max = (int) apply_filters( 'wmac_max_kses_file_size', 2 * 1024 * 1024 );
+			if ( (int) $file['size'] > $kses_max ) {
+				return new \WP_Error(
+					'wmac_file_too_large_to_sanitize',
+					__( 'Files this large can only be attached by users with the unfiltered_html capability; uploads from other users must pass through HTML sanitization.', 'webmultipliers-wp-artifact-canvas' ),
+					array( 'status' => 413 )
+				);
+			}
+		}
+
 		$dest = self::get_write_path( $post_id );
 		if ( is_wp_error( $dest ) ) {
 			return $dest;
 		}
 
 		// A re-upload replaces the file; clear any legacy-named copy so the
-		// old content can never be served again.
+		// old content can never be served again. An HTML upload also retires
+		// a previous PDF profile — delete the orphaned binary and its format
+		// flag so the artifact transitions cleanly back to passthrough HTML.
 		self::delete_files( $post_id );
+		self::delete_files( $post_id, 'pdf' );
+		delete_post_meta( $post_id, PdfRenderer::FORMAT_META );
 
 		if ( ! move_uploaded_file( $file['tmp_name'], $dest ) ) {
 			return new \WP_Error(
@@ -175,6 +200,8 @@ class ArtifactFile {
 			$sanitized = true;
 		}
 
+		self::signal_content_updated( $post_id );
+
 		return new \WP_REST_Response(
 			array(
 				'stored'    => true,
@@ -185,8 +212,9 @@ class ArtifactFile {
 	}
 
 	/**
-	 * Runs wp_kses_post in place on a stored HTML file — the file-path
-	 * equivalent of Security::sanitize_on_save for the block-content path.
+	 * Runs the artifact KSES profile in place on a stored HTML file — the
+	 * file-path equivalent of Security::sanitize_on_save for the
+	 * block-content path.
 	 */
 	private function sanitize_stored_file( string $path ): void {
 		$raw = file_get_contents( $path ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents -- local stored file, not remote.
@@ -194,10 +222,10 @@ class ArtifactFile {
 			return;
 		}
 
-		$clean = wp_kses_post( $raw );
+		$clean = Security::kses_artifact_html( $raw );
 		if ( $clean !== $raw ) {
 			// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_file_put_contents
-			file_put_contents( $path, $clean );
+			file_put_contents( $path, $clean, LOCK_EX );
 		}
 	}
 
@@ -206,7 +234,27 @@ class ArtifactFile {
 
 		self::delete_files( $post_id );
 
+		self::signal_content_updated( $post_id );
+
 		return new \WP_REST_Response( array( 'removed' => true ), 200 );
+	}
+
+	/**
+	 * Signals caching layers that an artifact's served output changed via a
+	 * file operation that never touches the post record. Content saved
+	 * through the editor already fires the core save_post / clean_post_cache
+	 * events that cache and CDN plugins listen to; file attach/replace/remove
+	 * paths need an equivalent. Hook CDN or edge purges here.
+	 */
+	public static function signal_content_updated( int $post_id ): void {
+		clean_post_cache( $post_id );
+
+		/**
+		 * Fires after a file-level change to an artifact's served content.
+		 *
+		 * @param int $post_id Artifact post ID.
+		 */
+		do_action( 'wmac_artifact_content_updated', $post_id );
 	}
 
 	public function cleanup_on_delete( int $post_id ): void {
@@ -220,18 +268,52 @@ class ArtifactFile {
 	}
 
 	/**
-	 * Unguessable per-post filename token, keyed with the site's auth salt.
-	 * Deterministic, so no extra meta is needed to locate a post's file.
+	 * Unguessable per-post filename token. Files written after this version
+	 * persist the token in post meta (see get_write_path), so a rotation of
+	 * the site's auth salt no longer orphans every stored file. Posts
+	 * without a persisted token fall back to the historical salt-derived
+	 * value, which still matches their on-disk names while the salt is
+	 * unchanged.
 	 */
 	public static function file_token( int $post_id ): string {
+		if ( $post_id > 0 ) {
+			$stored = get_post_meta( $post_id, self::TOKEN_META, true );
+			if ( is_string( $stored ) && preg_match( '/^[a-f0-9]{16}$/', $stored ) === 1 ) {
+				return $stored;
+			}
+		}
+
+		return self::salt_token( $post_id );
+	}
+
+	/** The pre-persistence token derivation, keyed with the auth salt. */
+	private static function salt_token( int $post_id ): string {
 		return substr( hash_hmac( 'sha256', 'wmac-artifact-' . $post_id, wp_salt( 'auth' ) ), 0, 16 );
 	}
 
 	/**
+	 * Filenames that may hold this post's file, canonical name first.
+	 *
+	 * @return string[]
+	 */
+	private static function candidate_names( int $post_id, string $ext ): array {
+		return array_values(
+			array_unique(
+				array(
+					$post_id . '-' . self::file_token( $post_id ) . '.' . $ext, // Persisted token (or salt fallback).
+					$post_id . '-' . self::salt_token( $post_id ) . '.' . $ext, // Pre-persistence salt-derived name.
+					$post_id . '.' . $ext,                                      // Pre-1.0 legacy name.
+				)
+			)
+		);
+	}
+
+	/**
 	 * Returns the read path for a post's stored file, preferring the
-	 * randomized name and falling back to the legacy {id}.{ext} name written
-	 * by pre-1.0 versions. Null when the upload dir is unavailable; the file
-	 * may not exist — callers should check is_readable().
+	 * randomized name and falling back to the salt-derived and legacy
+	 * {id}.{ext} names written by earlier versions. Null when the upload dir
+	 * is unavailable; the file may not exist — callers should check
+	 * is_readable().
 	 */
 	public static function get_file_path( int $post_id, string $ext = 'html' ): ?string {
 		$upload_dir = wp_upload_dir();
@@ -241,30 +323,36 @@ class ArtifactFile {
 
 		$base = $upload_dir['basedir'] . DIRECTORY_SEPARATOR . 'wmac-artifacts' . DIRECTORY_SEPARATOR;
 
-		$randomized = $base . $post_id . '-' . self::file_token( $post_id ) . '.' . $ext;
-		if ( file_exists( $randomized ) ) {
-			return $randomized;
+		$candidates = self::candidate_names( $post_id, $ext );
+		foreach ( $candidates as $name ) {
+			if ( file_exists( $base . $name ) ) {
+				return $base . $name;
+			}
 		}
 
-		$legacy = $base . $post_id . '.' . $ext;
-		if ( file_exists( $legacy ) ) {
-			return $legacy;
-		}
-
-		return $randomized;
+		return $base . $candidates[0];
 	}
 
-	/** Destination path for new writes — always the randomized name. */
+	/**
+	 * Destination path for new writes — always the randomized name. The
+	 * token is persisted to post meta here (write paths run in authorized
+	 * contexts) so the filename stays resolvable across salt rotations.
+	 */
 	public static function get_write_path( int $post_id, string $ext = 'html' ): string|\WP_Error {
 		$dir = self::get_or_create_upload_dir();
 		if ( is_wp_error( $dir ) ) {
 			return $dir;
 		}
 
-		return $dir . DIRECTORY_SEPARATOR . $post_id . '-' . self::file_token( $post_id ) . '.' . $ext;
+		$token = self::file_token( $post_id );
+		if ( $post_id > 0 && get_post_meta( $post_id, self::TOKEN_META, true ) !== $token ) {
+			update_post_meta( $post_id, self::TOKEN_META, $token );
+		}
+
+		return $dir . DIRECTORY_SEPARATOR . $post_id . '-' . $token . '.' . $ext;
 	}
 
-	/** Deletes both the randomized and legacy files for a post. */
+	/** Deletes the randomized (persisted and salt-derived) and legacy files for a post. */
 	public static function delete_files( int $post_id, string $ext = 'html' ): void {
 		$upload_dir = wp_upload_dir();
 		if ( $upload_dir['error'] ) {
@@ -273,12 +361,9 @@ class ArtifactFile {
 
 		$base = $upload_dir['basedir'] . DIRECTORY_SEPARATOR . 'wmac-artifacts' . DIRECTORY_SEPARATOR;
 
-		foreach ( array(
-			$base . $post_id . '-' . self::file_token( $post_id ) . '.' . $ext,
-			$base . $post_id . '.' . $ext,
-		) as $path ) {
-			if ( file_exists( $path ) ) {
-				wp_delete_file( $path );
+		foreach ( self::candidate_names( $post_id, $ext ) as $name ) {
+			if ( file_exists( $base . $name ) ) {
+				wp_delete_file( $base . $name );
 			}
 		}
 	}

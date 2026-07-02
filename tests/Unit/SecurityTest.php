@@ -50,7 +50,7 @@ final class SecurityTest extends TestCase {
 		Functions\expect( 'wp_is_post_revision' )->once()->andReturn( false );
 		Functions\expect( 'parse_blocks' )->once()->andReturn( $this->blocks_with_html( $raw ) );
 		Functions\expect( 'current_user_can' )->once()->with( 'unfiltered_html' )->andReturn( true );
-		Functions\expect( 'wp_kses_post' )->never();
+		Functions\expect( 'wp_kses' )->never();
 		Functions\expect( 'wp_update_post' )->never();
 
 		( new Security() )->sanitize_on_save( 42, $this->artifact_post() );
@@ -64,7 +64,8 @@ final class SecurityTest extends TestCase {
 		Functions\expect( 'wp_is_post_revision' )->once()->andReturn( false );
 		Functions\expect( 'parse_blocks' )->once()->andReturn( $this->blocks_with_html( $raw ) );
 		Functions\expect( 'current_user_can' )->once()->with( 'unfiltered_html' )->andReturn( false );
-		Functions\expect( 'wp_kses_post' )->once()->with( $raw )->andReturn( $filtered );
+		Functions\when( 'wp_kses_allowed_html' )->justReturn( [] );
+		Functions\expect( 'wp_kses' )->once()->andReturn( $filtered );
 		Functions\expect( 'serialize_blocks' )->once()->andReturnUsing(
 			static function ( array $blocks ) {
 				return $blocks[0]['attrs']['html'];
@@ -88,10 +89,49 @@ final class SecurityTest extends TestCase {
 		Functions\expect( 'wp_is_post_revision' )->once()->andReturn( false );
 		Functions\expect( 'parse_blocks' )->once()->andReturn( $this->blocks_with_html( $clean ) );
 		Functions\expect( 'current_user_can' )->once()->with( 'unfiltered_html' )->andReturn( false );
-		Functions\expect( 'wp_kses_post' )->once()->with( $clean )->andReturn( $clean );
+		Functions\when( 'wp_kses_allowed_html' )->justReturn( [] );
+		Functions\expect( 'wp_kses' )->once()->andReturn( $clean );
 		Functions\expect( 'wp_update_post' )->never();
 
 		( new Security() )->sanitize_on_save( 42, $this->artifact_post() );
+	}
+
+	public function test_kses_profile_preserves_doctype_and_allows_document_skeleton(): void {
+		$captured_allowed = null;
+
+		Functions\when( 'wp_kses_allowed_html' )->justReturn( [ 'p' => [] ] );
+		Functions\when( 'wp_kses' )->alias(
+			static function ( string $html, array $allowed ) use ( &$captured_allowed ): string {
+				$captured_allowed = $allowed;
+				return $html;
+			}
+		);
+
+		$doc = '<!DOCTYPE html><html lang="en"><head><style>body{}</style></head><body><p>x</p></body></html>';
+		$out = Security::kses_artifact_html( $doc );
+
+		$this->assertSame( $doc, $out );
+		$this->assertStringStartsWith( '<!DOCTYPE html>', $out );
+		$this->assertIsArray( $captured_allowed );
+		$this->assertArrayHasKey( 'html', $captured_allowed );
+		$this->assertArrayHasKey( 'head', $captured_allowed );
+		$this->assertArrayHasKey( 'body', $captured_allowed );
+		$this->assertArrayHasKey( 'style', $captured_allowed );
+		$this->assertArrayHasKey( 'link', $captured_allowed );
+		$this->assertArrayHasKey( 'meta', $captured_allowed );
+		$this->assertArrayHasKey( 'p', $captured_allowed, 'wp_kses_post allowlist must be preserved' );
+	}
+
+	public function test_suspend_skips_sanitization_entirely(): void {
+		Functions\expect( 'wp_is_post_autosave' )->never();
+		Functions\expect( 'wp_update_post' )->never();
+
+		Security::suspend();
+		try {
+			( new Security() )->sanitize_on_save( 42, $this->artifact_post() );
+		} finally {
+			Security::resume();
+		}
 	}
 
 	public function test_empty_title_is_populated_from_html_title_tag(): void {

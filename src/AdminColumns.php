@@ -12,6 +12,9 @@ namespace WebMultipliers\ArtifactCanvas;
  */
 class AdminColumns {
 
+	/** Persisted payload byte size — keeps the Size column DB-sortable. */
+	public const SIZE_META = '_wmac_payload_size';
+
 	public function register_hooks(): void {
 		add_filter( 'manage_' . PostType::KEY . '_posts_columns', array( $this, 'add_columns' ) );
 		add_action( 'manage_' . PostType::KEY . '_posts_custom_column', array( $this, 'render_column' ), 10, 2 );
@@ -20,6 +23,11 @@ class AdminColumns {
 		add_filter( 'post_row_actions', array( $this, 'add_row_actions' ), 10, 2 );
 		add_action( 'admin_post_wmac_download', array( $this, 'handle_download' ) );
 		add_action( 'admin_head', array( $this, 'column_styles' ) );
+
+		// Keep the persisted size current: content saves (priority 20 runs
+		// after Security's sanitize pass) and file-level changes.
+		add_action( 'save_post_' . PostType::KEY, array( $this, 'update_size_meta_on_save' ), 20 );
+		add_action( 'wmac_artifact_content_updated', array( $this, 'update_size_meta' ) );
 	}
 
 	public function add_columns( array $columns ): array {
@@ -64,9 +72,43 @@ class AdminColumns {
 		if ( $query->get( 'orderby' ) !== 'wmac_size' ) {
 			return;
 		}
-		// Size isn't stored as meta, so we can't sort it at the DB level.
-		// Silently fall back to date order — sorting 500+ rows in PHP is not worth it.
-		$query->set( 'orderby', 'date' );
+
+		// Sort on the persisted byte-size meta. The NOT EXISTS clause keeps
+		// rows without the meta (not yet backfilled) in the result set.
+		$query->set(
+			'meta_query',
+			array(
+				'relation'          => 'OR',
+				'wmac_size_exists'  => array(
+					'key'     => self::SIZE_META,
+					'compare' => 'EXISTS',
+					'type'    => 'NUMERIC',
+				),
+				'wmac_size_missing' => array(
+					'key'     => self::SIZE_META,
+					'compare' => 'NOT EXISTS',
+				),
+			)
+		);
+		$query->set( 'orderby', 'wmac_size_exists' );
+	}
+
+	/** save_post handler — skips the snapshots WP writes alongside real saves. */
+	public function update_size_meta_on_save( int $post_id ): void {
+		if ( wp_is_post_autosave( $post_id ) || wp_is_post_revision( $post_id ) ) {
+			return;
+		}
+		$this->update_size_meta( $post_id );
+	}
+
+	/** Recomputes and persists the payload byte size for sorting. */
+	public function update_size_meta( int $post_id ): void {
+		$bytes = $this->compute_html_byte_size( $post_id );
+		if ( $bytes === null ) {
+			delete_post_meta( $post_id, self::SIZE_META );
+		} else {
+			update_post_meta( $post_id, self::SIZE_META, $bytes );
+		}
 	}
 
 	public function add_row_actions( array $actions, \WP_Post $post ): array {
@@ -83,10 +125,14 @@ class AdminColumns {
 			'wmac_download_' . $post->ID
 		);
 
+		$is_pdf = get_post_meta( $post->ID, PdfRenderer::FORMAT_META, true ) === PdfRenderer::FORMAT_PDF;
+
 		$actions['wmac_download'] = sprintf(
 			'<a href="%s">%s</a>',
 			esc_url( $url ),
-			esc_html__( 'Download HTML', 'webmultipliers-wp-artifact-canvas' )
+			$is_pdf
+				? esc_html__( 'Download PDF', 'webmultipliers-wp-artifact-canvas' )
+				: esc_html__( 'Download HTML', 'webmultipliers-wp-artifact-canvas' )
 		);
 
 		return $actions;
@@ -110,7 +156,29 @@ class AdminColumns {
 			wp_die( esc_html__( 'You do not have permission to download this artifact.', 'webmultipliers-wp-artifact-canvas' ), 403 );
 		}
 
-		$html = $this->get_html( $post );
+		// PDF-format artifacts have no HTML payload — deliver their binary.
+		$pdf_path = ArtifactFile::get_file_path( $post_id, 'pdf' );
+		if ( get_post_meta( $post_id, PdfRenderer::FORMAT_META, true ) === PdfRenderer::FORMAT_PDF
+			&& $pdf_path !== null
+			&& is_readable( $pdf_path )
+		) {
+			$filename = sanitize_file_name( get_the_title( $post ) ?: 'artifact-' . $post_id ) . '.pdf';
+			$size     = filesize( $pdf_path );
+
+			header( 'Content-Type: application/pdf' );
+			header( 'Content-Disposition: attachment; filename="' . $filename . '"' );
+			if ( $size !== false ) {
+				header( 'Content-Length: ' . $size );
+			}
+			header( 'Cache-Control: no-store' );
+			header( 'X-Content-Type-Options: nosniff' );
+
+			// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_readfile
+			readfile( $pdf_path );
+			exit;
+		}
+
+		$html = Renderer::get_artifact_html( $post );
 		if ( $html === '' ) {
 			wp_die( esc_html__( 'This artifact has no HTML content to download.', 'webmultipliers-wp-artifact-canvas' ), 404 );
 		}
@@ -173,7 +241,21 @@ class AdminColumns {
 		echo $output !== '' ? $output : '<span aria-hidden="true">—</span>'; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
 	}
 
+	/** Reads the persisted size, lazily backfilling posts saved before it existed. */
 	private function get_html_byte_size( int $post_id ): ?int {
+		$stored = get_post_meta( $post_id, self::SIZE_META, true );
+		if ( $stored !== '' && $stored !== false ) {
+			return (int) $stored;
+		}
+
+		$bytes = $this->compute_html_byte_size( $post_id );
+		if ( $bytes !== null ) {
+			update_post_meta( $post_id, self::SIZE_META, $bytes );
+		}
+		return $bytes;
+	}
+
+	private function compute_html_byte_size( int $post_id ): ?int {
 		$file_path = ArtifactFile::get_file_path( $post_id );
 		if ( $file_path !== null && is_readable( $file_path ) ) {
 			$size = filesize( $file_path );
@@ -193,24 +275,6 @@ class AdminColumns {
 			}
 		}
 		return null;
-	}
-
-	private function get_html( \WP_Post $post ): string {
-		$file_path = ArtifactFile::get_file_path( $post->ID );
-		if ( $file_path !== null && is_readable( $file_path ) ) {
-			$content = file_get_contents( $file_path ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents -- local artifact file, not remote.
-			if ( $content !== false ) {
-				return $content;
-			}
-		}
-
-		$blocks = parse_blocks( $post->post_content );
-		foreach ( $blocks as $block ) {
-			if ( $block['blockName'] === 'wmac/artifact' ) {
-				return $block['attrs']['html'] ?? '';
-			}
-		}
-		return '';
 	}
 
 	private function format_bytes( int $bytes ): string {

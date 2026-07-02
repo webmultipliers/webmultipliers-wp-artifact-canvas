@@ -81,4 +81,50 @@ final class MergeTagsTest extends TestCase {
 
 		$this->assertSame( 'X: {{totally_unknown}}', $html );
 	}
+
+	public function test_backslash_escaped_tag_emits_literal_placeholder(): void {
+		Functions\expect( 'get_post_meta' )->once()->andReturn( '' );
+		Functions\expect( 'has_filter' )->never();
+		Functions\expect( 'apply_filters' )->never();
+
+		$html = ( new MergeTags() )->apply_tags( 'X: \{{wp_current_year}}', $this->post() );
+
+		$this->assertSame( 'X: {{wp_current_year}}', $html );
+	}
+
+	public function test_static_attr_context_uses_esc_attr(): void {
+		Functions\when( 'esc_attr' )->alias(
+			static function ( string $s ) {
+				return 'ATTR(' . $s . ')';
+			}
+		);
+
+		$map = (string) json_encode( [
+			'cls' => [ 'mode' => 'static', 'value' => 'a b', 'context' => 'attr' ],
+		] );
+
+		Functions\expect( 'get_post_meta' )->once()->andReturn( $map );
+
+		$html = ( new MergeTags() )->apply_tags( '<div class="{{cls}}">', $this->post() );
+
+		$this->assertSame( '<div class="ATTR(a b)">', $html );
+	}
+
+	public function test_static_url_context_uses_esc_url_which_can_reject_unsafe_protocols(): void {
+		Functions\when( 'esc_url' )->alias(
+			static function ( string $s ) {
+				return str_starts_with( $s, 'javascript:' ) ? '' : $s;
+			}
+		);
+
+		$map = (string) json_encode( [
+			'link' => [ 'mode' => 'static', 'value' => 'javascript:alert(1)', 'context' => 'url' ],
+		] );
+
+		Functions\expect( 'get_post_meta' )->once()->andReturn( $map );
+
+		$html = ( new MergeTags() )->apply_tags( '<a href="{{link}}">x</a>', $this->post() );
+
+		$this->assertSame( '<a href="">x</a>', $html );
+	}
 }

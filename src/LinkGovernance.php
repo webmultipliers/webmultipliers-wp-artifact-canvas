@@ -117,13 +117,41 @@ class LinkGovernance {
 		return false;
 	}
 
-	/** Increments view count for non-preview, non-admin serves. */
+	/**
+	 * Increments view count for non-preview, non-admin serves.
+	 *
+	 * The increment runs as a single atomic SQL UPDATE rather than a
+	 * read-then-write through the meta API: concurrent visitors hitting the
+	 * same artifact would otherwise read the same stale count and commit the
+	 * same total, under-counting views and letting traffic slip past the
+	 * max-view gate.
+	 */
 	public function increment_view_count( \WP_Post $post ): void {
 		if ( is_preview() || is_user_logged_in() ) {
 			return;
 		}
-		$current = (int) get_post_meta( $post->ID, self::VIEW_COUNT, true );
-		update_post_meta( $post->ID, self::VIEW_COUNT, $current + 1 );
+
+		global $wpdb;
+
+		// phpcs:disable WordPress.DB.DirectDatabaseQuery -- atomic counter; the meta API cannot express this without a race.
+		$updated = $wpdb->query(
+			$wpdb->prepare(
+				"UPDATE {$wpdb->postmeta} SET meta_value = meta_value + 1 WHERE post_id = %d AND meta_key = %s",
+				$post->ID,
+				self::VIEW_COUNT
+			)
+		);
+		// phpcs:enable WordPress.DB.DirectDatabaseQuery
+
+		if ( ! $updated ) {
+			// No row yet — first public view. unique=true keeps a concurrent
+			// first view from creating a second row.
+			add_post_meta( $post->ID, self::VIEW_COUNT, 1, true );
+		}
+
+		// The direct UPDATE bypasses the meta cache; drop it so is_expired()
+		// and the editor read the fresh count.
+		wp_cache_delete( $post->ID, 'post_meta' );
 	}
 
 	/** Renders the "link expired" gate page (HTTP 410). */

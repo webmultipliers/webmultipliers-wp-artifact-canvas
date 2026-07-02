@@ -37,6 +37,14 @@ class ManagementMetaboxes {
 			'high'
 		);
 		add_meta_box(
+			'wmac-custom-code',
+			__( 'Custom Code & External Assets', 'webmultipliers-wp-artifact-canvas' ),
+			array( $this, 'render_custom_code' ),
+			PostType::KEY,
+			'normal',
+			'high'
+		);
+		add_meta_box(
 			'wmac-governance',
 			__( 'Link Governance', 'webmultipliers-wp-artifact-canvas' ),
 			array( $this, 'render_governance' ),
@@ -127,15 +135,51 @@ class ManagementMetaboxes {
 		return array_values( array_unique( $matches[1] ) );
 	}
 
-	/** @return string[] */
+	/**
+	 * Finds relative asset references in every form AssetMapper can rewrite:
+	 * quoted and quote-less src/href/poster attributes, srcset entries, and
+	 * CSS url(...) references.
+	 *
+	 * @return string[]
+	 */
 	private function detect_asset_paths( string $html ): array {
 		if ( $html === '' ) {
 			return array();
 		}
-		preg_match_all( '/(?:src|href)\s*=\s*["\']([^"\']+)["\']/i', $html, $matches );
+
+		$candidates = array();
+
+		preg_match_all( '/(?:src|href|poster)\s*=\s*["\']([^"\']+)["\']/i', $html, $matches );
+		$candidates = array_merge( $candidates, $matches[1] );
+
+		// Quote-less HTML5 attributes (the excluded quote chars keep this
+		// from re-matching quoted values).
+		preg_match_all( '/(?:src|href|poster)\s*=\s*([^\s"\'=<>`]+)/i', $html, $matches );
+		$candidates = array_merge( $candidates, $matches[1] );
+
+		// srcset candidates: "path [descriptor], path [descriptor], …".
+		preg_match_all( '/srcset\s*=\s*["\']([^"\']+)["\']/i', $html, $matches );
+		foreach ( $matches[1] as $srcset ) {
+			foreach ( explode( ',', $srcset ) as $entry ) {
+				$parts = preg_split( '/\s+/', trim( $entry ) );
+				if ( is_array( $parts ) && ! empty( $parts[0] ) ) {
+					$candidates[] = $parts[0];
+				}
+			}
+		}
+
+		// CSS url(...) references in <style> blocks and style attributes.
+		preg_match_all( '/url\(\s*(["\']?)([^"\')]+)\1\s*\)/i', $html, $matches );
+		$candidates = array_merge( $candidates, $matches[2] );
+
 		$found = array();
-		foreach ( $matches[1] as $path ) {
-			if ( preg_match( '~^(?:https?://|//|data:|#|mailto:|tel:)~i', $path ) || str_starts_with( $path, '/' ) ) {
+		foreach ( $candidates as $path ) {
+			$path = trim( $path );
+			if ( $path === ''
+				|| preg_match( '~^(?:https?://|//|data:|#|mailto:|tel:|javascript:|blob:)~i', $path )
+				|| str_starts_with( $path, '/' )
+				|| str_contains( $path, '{{' )
+			) {
 				continue;
 			}
 			$found[ $path ] = true;
@@ -162,15 +206,16 @@ class ManagementMetaboxes {
 		<?php
 	}
 
-	private function field_textarea( string $key, string $label, string $value, string $help = '', bool $disabled = false ): void {
+	private function field_textarea( string $key, string $label, string $value, string $help = '', bool $disabled = false, bool $code = false ): void {
 		?>
 		<div class="wmac-field">
 			<label for="<?php echo esc_attr( $key ); ?>" class="wmac-field__label"><?php echo esc_html( $label ); ?></label>
 			<textarea
 				id="<?php echo esc_attr( $key ); ?>"
-				class="wmac-field__input wmac-field__textarea"
+				class="wmac-field__input wmac-field__textarea<?php echo $code ? ' wmac-field__textarea--code' : ''; ?>"
 				data-wmac-meta="<?php echo esc_attr( $key ); ?>"
 				rows="5"
+				spellcheck="<?php echo $code ? 'false' : 'true'; ?>"
 				<?php disabled( $disabled ); ?>
 			><?php echo esc_textarea( $value ); ?></textarea>
 			<?php if ( $help ) : ?>
@@ -208,12 +253,13 @@ class ManagementMetaboxes {
 	// -----------------------------------------------------------------
 
 	public function render_settings( \WP_Post $post ): void {
-		$alias    = (string) get_post_meta( $post->ID, ArtifactAlias::META_KEY, true );
-		$noindex  = (string) get_post_meta( $post->ID, ArtifactMeta::NOINDEX, true );
-		$seo      = (string) get_post_meta( $post->ID, ArtifactMeta::SEO_ENABLED, true );
-		$csp      = (string) get_post_meta( $post->ID, ArtifactMeta::CSP, true );
-		$prompt   = (string) get_post_meta( $post->ID, ArtifactMeta::PROMPT, true );
-		$site_url = untrailingslashit( (string) get_bloginfo( 'url' ) );
+		$alias       = (string) get_post_meta( $post->ID, ArtifactAlias::META_KEY, true );
+		$description = (string) get_post_meta( $post->ID, ArtifactMeta::DESCRIPTION, true );
+		$noindex     = (string) get_post_meta( $post->ID, ArtifactMeta::NOINDEX, true );
+		$seo         = (string) get_post_meta( $post->ID, ArtifactMeta::SEO_ENABLED, true );
+		$csp         = (string) get_post_meta( $post->ID, ArtifactMeta::CSP, true );
+		$prompt      = (string) get_post_meta( $post->ID, ArtifactMeta::PROMPT, true );
+		$site_url    = untrailingslashit( (string) get_bloginfo( 'url' ) );
 
 		echo '<div class="wmac-metabox">';
 
@@ -226,6 +272,13 @@ class ManagementMetaboxes {
 				: __( 'Optional. Enter a path (e.g. "pricing") to serve this artifact at that URL on the front end.', 'webmultipliers-wp-artifact-canvas' ),
 			'text',
 			'e.g. pricing'
+		);
+
+		$this->field_textarea(
+			ArtifactMeta::DESCRIPTION,
+			__( 'Description', 'webmultipliers-wp-artifact-canvas' ),
+			$description,
+			__( 'What this artifact is. Used as the og:description / meta description when SEO tags are enabled.', 'webmultipliers-wp-artifact-canvas' )
 		);
 
 		$this->field_checkbox(
@@ -254,6 +307,67 @@ class ManagementMetaboxes {
 			__( 'Generation Prompt', 'webmultipliers-wp-artifact-canvas' ),
 			$prompt,
 			__( 'Paste the prompt used to generate this artifact. Private — not published.', 'webmultipliers-wp-artifact-canvas' )
+		);
+
+		$this->status_indicator();
+		echo '</div>';
+	}
+
+	// -----------------------------------------------------------------
+	// Custom Code & External Assets
+	// -----------------------------------------------------------------
+
+	public function render_custom_code( \WP_Post $post ): void {
+		$styles    = (string) get_post_meta( $post->ID, CodeInjection::EXTERNAL_STYLES, true );
+		$scripts   = (string) get_post_meta( $post->ID, CodeInjection::EXTERNAL_SCRIPTS, true );
+		$head_html = (string) get_post_meta( $post->ID, CodeInjection::HEAD_HTML, true );
+		$body_html = (string) get_post_meta( $post->ID, CodeInjection::BODY_HTML, true );
+		$can_code  = current_user_can( 'unfiltered_html' );
+
+		echo '<div class="wmac-metabox">';
+
+		if ( ! $can_code ) {
+			printf(
+				'<p class="wmac-field-hint--warning">%s</p>',
+				esc_html__( 'External scripts and head/body markup execute in the artifact page, so saving them requires administrator (unfiltered_html) privileges. External stylesheets are open to all editors.', 'webmultipliers-wp-artifact-canvas' )
+			);
+		}
+
+		$this->field_textarea(
+			CodeInjection::EXTERNAL_STYLES,
+			__( 'External Stylesheets', 'webmultipliers-wp-artifact-canvas' ),
+			$styles,
+			// phpcs:ignore WordPress.WP.EnqueuedResources.NonEnqueuedStylesheet -- help text, not markup output.
+			__( 'One URL per line. Each is added as a stylesheet <link> in this order, before your head markup.', 'webmultipliers-wp-artifact-canvas' ),
+			false,
+			true
+		);
+
+		$this->field_textarea(
+			CodeInjection::EXTERNAL_SCRIPTS,
+			__( 'External Scripts', 'webmultipliers-wp-artifact-canvas' ),
+			$scripts,
+			__( 'One URL per line. Each is added as a <script src> before </body> in this order, ahead of your body markup.', 'webmultipliers-wp-artifact-canvas' ),
+			! $can_code,
+			true
+		);
+
+		$this->field_textarea(
+			CodeInjection::HEAD_HTML,
+			__( 'Stuff for <head>', 'webmultipliers-wp-artifact-canvas' ),
+			$head_html,
+			__( 'Raw markup injected before </head> — meta tags, inline styles, font loaders. {{merge tags}} resolve here too.', 'webmultipliers-wp-artifact-canvas' ),
+			! $can_code,
+			true
+		);
+
+		$this->field_textarea(
+			CodeInjection::BODY_HTML,
+			__( 'Stuff before </body>', 'webmultipliers-wp-artifact-canvas' ),
+			$body_html,
+			__( 'Raw markup appended before </body> — inline scripts, widgets, embeds. Runs after the external scripts above.', 'webmultipliers-wp-artifact-canvas' ),
+			! $can_code,
+			true
 		);
 
 		$this->status_indicator();
@@ -413,8 +527,10 @@ class ManagementMetaboxes {
 	}
 
 	private function render_tag_row( string $tag, bool $in_html, array $config ): void {
-		$mode  = ( $config['mode'] ?? 'static' ) === 'dynamic' ? 'dynamic' : 'static';
-		$value = (string) ( $config['value'] ?? '' );
+		$mode    = ( $config['mode'] ?? 'static' ) === 'dynamic' ? 'dynamic' : 'static';
+		$value   = (string) ( $config['value'] ?? '' );
+		$context = (string) ( $config['context'] ?? 'text' );
+		$context = in_array( $context, array( 'text', 'attr', 'url' ), true ) ? $context : 'text';
 		?>
 		<tr data-tag="<?php echo esc_attr( $tag ); ?>" class="wmac-mgmt__row<?php echo $in_html ? '' : ' wmac-mgmt__row--orphan'; ?>">
 			<td>
@@ -427,6 +543,15 @@ class ManagementMetaboxes {
 				<select class="wmac-tag-mode">
 					<option value="static" <?php selected( $mode, 'static' ); ?>><?php esc_html_e( 'Static', 'webmultipliers-wp-artifact-canvas' ); ?></option>
 					<option value="dynamic" <?php selected( $mode, 'dynamic' ); ?>><?php esc_html_e( 'Dynamic', 'webmultipliers-wp-artifact-canvas' ); ?></option>
+				</select>
+				<select
+					class="wmac-tag-context"
+					title="<?php esc_attr_e( 'Where the placeholder sits in the HTML — picks the matching escaping (Text: esc_html, Attribute: esc_attr, URL: esc_url).', 'webmultipliers-wp-artifact-canvas' ); ?>"
+					<?php echo $mode === 'dynamic' ? ' style="display:none"' : ''; ?>
+				>
+					<option value="text" <?php selected( $context, 'text' ); ?>><?php esc_html_e( 'Text', 'webmultipliers-wp-artifact-canvas' ); ?></option>
+					<option value="attr" <?php selected( $context, 'attr' ); ?>><?php esc_html_e( 'Attribute', 'webmultipliers-wp-artifact-canvas' ); ?></option>
+					<option value="url" <?php selected( $context, 'url' ); ?>><?php esc_html_e( 'URL', 'webmultipliers-wp-artifact-canvas' ); ?></option>
 				</select>
 			</td>
 			<td>

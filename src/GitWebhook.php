@@ -107,7 +107,7 @@ class GitWebhook {
 		ArtifactFile::delete_files( $post_id );
 
 		// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_file_put_contents
-		if ( file_put_contents( $dest, $html ) === false ) {
+		if ( file_put_contents( $dest, $html, LOCK_EX ) === false ) {
 			return new \WP_Error(
 				'wmac_write_failed',
 				__( 'Could not write the artifact file to disk.', 'webmultipliers-wp-artifact-canvas' ),
@@ -115,23 +115,11 @@ class GitWebhook {
 			);
 		}
 
-		// Leave a breadcrumb in post_excerpt for the Revisions screen.
 		$ref  = isset( $payload['ref'] ) ? sanitize_text_field( (string) $payload['ref'] ) : '';
 		$sha  = isset( $payload['after'] ) ? substr( sanitize_text_field( (string) $payload['after'] ), 0, 8 ) : '';
 		$note = trim( implode( ' @ ', array_filter( array( $ref, $sha ) ) ) );
 
-		if ( $note !== '' ) {
-			wp_update_post(
-				array(
-					'ID'           => $post_id,
-					'post_excerpt' => sprintf(
-					/* translators: %s: git ref @ short-SHA */
-						__( 'Git deploy: %s', 'webmultipliers-wp-artifact-canvas' ),
-						$note
-					),
-				)
-			);
-		}
+		$this->sync_post_after_deploy( $post, $html, $note );
 
 		return new \WP_REST_Response(
 			array(
@@ -147,6 +135,71 @@ class GitWebhook {
 	// -------------------------------------------------------------------------
 	// Private helpers
 	// -------------------------------------------------------------------------
+
+	/**
+	 * Mirrors a deploy into the post record in one wp_update_post call:
+	 * the block attributes get the deployed HTML and fileStored=true so the
+	 * editor reflects the server file (instead of a stale code editor whose
+	 * next save would desynchronise from disk), the excerpt gets the
+	 * ref@sha breadcrumb, and the content change gives core revisions a
+	 * real snapshot to diff and roll back.
+	 *
+	 * Security::sanitize_on_save is suspended around the update: the
+	 * webhook is authenticated by HMAC, not a WP user, so the anonymous
+	 * request context would fail the unfiltered_html check and kses-mangle
+	 * content this pipeline is trusted to deploy verbatim (the file on disk
+	 * is served unfiltered either way). The serialized block itself is
+	 * kses-proof — serialize_block unicode-escapes <, >, & and quotes
+	 * inside the attribute JSON.
+	 */
+	private function sync_post_after_deploy( \WP_Post $post, string $html, string $note ): void {
+		$blocks  = parse_blocks( $post->post_content );
+		$updated = false;
+
+		foreach ( $blocks as &$block ) {
+			if ( ( $block['blockName'] ?? '' ) === 'wmac/artifact' ) {
+				$block['attrs']['html']       = $html;
+				$block['attrs']['fileStored'] = true;
+				$updated                      = true;
+				break;
+			}
+		}
+		unset( $block );
+
+		$content = $updated
+			? serialize_blocks( $blocks )
+			: serialize_block(
+				array(
+					'blockName'    => 'wmac/artifact',
+					'attrs'        => array(
+						'html'       => $html,
+						'fileStored' => true,
+					),
+					'innerBlocks'  => array(),
+					'innerHTML'    => '',
+					'innerContent' => array(),
+				)
+			);
+
+		$update = array(
+			'ID'           => $post->ID,
+			'post_content' => $content,
+		);
+
+		if ( $note !== '' ) {
+			$update['post_excerpt'] = sprintf(
+				/* translators: %s: git ref @ short-SHA */
+				__( 'Git deploy: %s', 'webmultipliers-wp-artifact-canvas' ),
+				$note
+			);
+		}
+
+		Security::suspend();
+		// wp_update_post expects slashed data; the block-attribute JSON is
+		// full of backslash escapes that wp_unslash would otherwise strip.
+		wp_update_post( wp_slash( $update ) );
+		Security::resume();
+	}
 
 	private function verify_signature( \WP_REST_Request $request ): bool|\WP_Error {
 		$secret = (string) get_option( self::OPTION_SECRET, '' );

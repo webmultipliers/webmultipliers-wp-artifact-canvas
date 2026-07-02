@@ -64,7 +64,7 @@ class Settings {
 		return array(
 			'noindex_default'     => ! empty( $raw['noindex_default'] ),
 			'seo_enabled_default' => ! empty( $raw['seo_enabled_default'] ),
-			'csp_default'         => str_replace( array( "\r", "\n" ), '', sanitize_text_field( $raw['csp_default'] ?? '' ) ),
+			'csp_default'         => ArtifactMeta::sanitize_csp( $raw['csp_default'] ?? '' ),
 			'toolbar_mode'        => in_array( $raw['toolbar_mode'] ?? '', array( 'none', 'custom', 'core' ), true )
 				? $raw['toolbar_mode']
 				: $defaults['toolbar_mode'],

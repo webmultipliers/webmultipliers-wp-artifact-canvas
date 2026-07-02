@@ -26,8 +26,8 @@ class LifecycleStatus {
 		add_action( 'init', array( $this, 'register_statuses' ) );
 		add_action( 'admin_footer-post.php', array( $this, 'inject_status_js' ) );
 		add_action( 'admin_footer-post-new.php', array( $this, 'inject_status_js' ) );
-		// Ensure custom statuses are available in REST API status validation.
-		add_filter( 'rest_' . PostType::KEY . '_query', array( $this, 'include_custom_statuses_in_query' ) );
+		// Include custom statuses in default REST collection queries for editors.
+		add_filter( 'rest_' . PostType::KEY . '_query', array( $this, 'include_custom_statuses_in_query' ), 10, 2 );
 	}
 
 	public function register_statuses(): void {
@@ -132,9 +132,31 @@ class LifecycleStatus {
 	}
 
 	/**
-	 * Ensures admin list queries include custom statuses when no specific status filter is set.
+	 * Expands default REST collection queries to include the custom lifecycle
+	 * statuses, so the block editor's link/search UIs and headless clients can
+	 * see artifacts sitting in wm_review / wm_approved / wm_archived without
+	 * passing an explicit status filter. Applies only to requesters who can
+	 * edit artifacts; explicit ?status= filters are respected as-is (their
+	 * values already validate — registered statuses are in the param enum).
+	 *
+	 * @param array<string, mixed>   $args    WP_Query args prepared by the REST controller.
+	 * @param \WP_REST_Request|null $request The originating REST request.
+	 * @return array<string, mixed>
 	 */
-	public function include_custom_statuses_in_query( array $args ): array {
+	public function include_custom_statuses_in_query( array $args, $request = null ): array {
+		if ( $request instanceof \WP_REST_Request && $request->get_param( 'status' ) !== null ) {
+			return $args;
+		}
+
+		$post_type_object = get_post_type_object( PostType::KEY );
+		$edit_cap         = $post_type_object ? $post_type_object->cap->edit_posts : 'edit_posts';
+		if ( ! current_user_can( $edit_cap ) ) {
+			return $args;
+		}
+
+		$statuses            = (array) ( $args['post_status'] ?? array( 'publish' ) );
+		$args['post_status'] = array_values( array_unique( array_merge( $statuses, array_keys( self::get_all() ) ) ) );
+
 		return $args;
 	}
 

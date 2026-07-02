@@ -27,6 +27,8 @@ class Plugin {
 	private AssetMapper $asset_mapper;
 	private MergeTags $merge_tags;
 	private ManagementMetaboxes $management_metaboxes;
+	private CodeInjection $code_injection;
+	private ArtifactTags $artifact_tags;
 
 	// Phase A — DAM foundation
 	private ClientTaxonomy $client_taxonomy;
@@ -77,6 +79,8 @@ class Plugin {
 		$this->asset_mapper         = new AssetMapper();
 		$this->merge_tags           = new MergeTags();
 		$this->management_metaboxes = new ManagementMetaboxes();
+		$this->code_injection       = new CodeInjection();
+		$this->artifact_tags        = new ArtifactTags();
 
 		$this->capabilities->register_hooks();
 		$this->post_type->register_hooks();
@@ -96,6 +100,8 @@ class Plugin {
 		$this->asset_mapper->register_hooks();
 		$this->merge_tags->register_hooks();
 		$this->management_metaboxes->register_hooks();
+		$this->code_injection->register_hooks();
+		$this->artifact_tags->register_hooks();
 
 		// --- Phase A — DAM foundation ---
 		$this->client_taxonomy  = new ClientTaxonomy();

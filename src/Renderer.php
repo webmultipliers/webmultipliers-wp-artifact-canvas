@@ -54,7 +54,7 @@ class Renderer {
 			}
 		}
 
-		$html = $this->get_artifact_html( $post, $content_source );
+		$html = self::get_artifact_html( $post, $content_source );
 
 		if ( $html === '' ) {
 			return;
@@ -75,7 +75,19 @@ class Renderer {
 		exit;
 	}
 
-	private function get_artifact_html( \WP_Post $post, \WP_Post $content_source ): string {
+	/**
+	 * Resolves the HTML for an artifact: server-stored file first, block
+	 * attribute as the fallback. Shared by PageUsurpation and AdminColumns so
+	 * the storage rules live in exactly one place.
+	 *
+	 * @param \WP_Post      $post           Canonical artifact post (file lookup key).
+	 * @param \WP_Post|null $content_source Post whose block content supplies the
+	 *                                      fallback HTML (an autosave during
+	 *                                      previews); defaults to $post.
+	 */
+	public static function get_artifact_html( \WP_Post $post, ?\WP_Post $content_source = null ): string {
+		$content_source = $content_source ?? $post;
+
 		// File lookup always uses the canonical post ID — never the autosave's ID.
 		$file_path = ArtifactFile::get_file_path( $post->ID );
 		if ( $file_path !== null && is_readable( $file_path ) ) {
@@ -104,7 +116,13 @@ class Renderer {
 
 		$is_public = ( $post->post_status === 'publish' && empty( $post->post_password ) );
 
-		if ( $is_public ) {
+		// Link-governed artifacts must never be edge-cached: a shared cache
+		// would keep serving past the expiry date and the view counter would
+		// stop incrementing, silently defeating both limits.
+		$is_governed = (string) get_post_meta( $post->ID, LinkGovernance::EXPIRES_AT, true ) !== ''
+			|| (int) get_post_meta( $post->ID, LinkGovernance::MAX_VIEWS, true ) > 0;
+
+		if ( $is_public && ! $is_governed ) {
 			header( 'Cache-Control: public, max-age=3600, s-maxage=86400' );
 		} else {
 			header( 'Cache-Control: no-store, no-cache, must-revalidate' );
@@ -146,10 +164,15 @@ class Renderer {
 			esc_attr( get_the_title( $post->ID ) )
 		);
 
-		return $this->inject_into_head( $html, $link );
+		return self::inject_into_head( $html, $link );
 	}
 
-	private function inject_into_head( string $html, string $injection ): string {
+	/**
+	 * Inserts markup before </head>, or prepends it when the document has no
+	 * closing head marker. Public/static so SeoMeta shares the same fallback
+	 * behaviour instead of silently dropping its tags.
+	 */
+	public static function inject_into_head( string $html, string $injection ): string {
 		$count  = 0;
 		$result = preg_replace_callback(
 			'/<\/head>/i',
@@ -168,6 +191,14 @@ class Renderer {
 
 	private function maybe_inject_admin_toolbar( string $html, \WP_Post $post ): string {
 		if ( ! is_user_logged_in() || ! current_user_can( 'edit_post', $post->ID ) ) {
+			return $html;
+		}
+
+		// Both toolbar variants rely on inline <style> blocks. If the artifact
+		// ships a CSP that forbids inline styles, skip injection entirely
+		// rather than render a broken overlay or weaken the policy.
+		$csp = (string) apply_filters( 'wmac_csp', '', $post );
+		if ( ! $this->csp_allows_inline_styles( $csp ) ) {
 			return $html;
 		}
 
@@ -213,10 +244,13 @@ class Renderer {
 
 		// Injected into a raw passthrough HTML document that never runs
 		// wp_head/wp_footer, so the enqueue API cannot deliver these.
+		// hoverintent-js is admin-bar.js's registered dependency; defer
+		// preserves document order so it executes first.
 		// phpcs:disable WordPress.WP.EnqueuedResources
 		$assets = sprintf(
-			'<link rel="stylesheet" id="admin-bar-css" href="%1$s" media="all" /><script src="%2$s" defer></script>',
+			'<link rel="stylesheet" id="admin-bar-css" href="%1$s" media="all" /><script src="%2$s" defer></script><script src="%3$s" defer></script>',
 			esc_url( includes_url( 'css/admin-bar.min.css' ) ),
+			esc_url( includes_url( 'js/hoverintent-js.min.js' ) ),
 			esc_url( includes_url( 'js/admin-bar.min.js' ) )
 		);
 		// phpcs:enable WordPress.WP.EnqueuedResources
@@ -271,6 +305,69 @@ class Renderer {
 
 	private function get_admin_toolbar_offset_markup(): string {
 		return '<style>html{margin-top:0!important}#wmac-admin-toolbar-offset{display:block;height:32px;min-height:32px;pointer-events:none}html{scroll-padding-top:32px}@media screen and (max-width:782px){#wmac-admin-toolbar-offset{height:46px;min-height:46px}html{scroll-padding-top:46px}}</style><div id="wmac-admin-toolbar-offset" aria-hidden="true"></div>';
+	}
+
+	/**
+	 * Inserts markup before </body>, appending to the end of the document
+	 * when no closing body marker exists — mirrors inject_into_head().
+	 */
+	public static function inject_before_body_close( string $html, string $injection ): string {
+		$count  = 0;
+		$result = preg_replace_callback(
+			'/<\/body>/i',
+			static function ( array $m ) use ( $injection ): string {
+				return $injection . $m[0];
+			},
+			$html,
+			1,
+			$count
+		);
+		if ( $count > 0 && is_string( $result ) ) {
+			return $result;
+		}
+		return $html . $injection;
+	}
+
+	/**
+	 * Whether a CSP string permits inline <style> blocks. Styles are governed
+	 * by style-src, falling back to default-src; an absent directive means no
+	 * restriction. Browsers ignore 'unsafe-inline' when the directive also
+	 * carries a nonce or hash, so their presence means our (un-nonced) inline
+	 * styles would be blocked.
+	 */
+	private function csp_allows_inline_styles( string $csp ): bool {
+		if ( trim( $csp ) === '' ) {
+			return true;
+		}
+
+		$governing = null;
+		foreach ( explode( ';', $csp ) as $directive ) {
+			$tokens = preg_split( '/\s+/', trim( $directive ), -1, PREG_SPLIT_NO_EMPTY );
+			if ( ! $tokens ) {
+				continue;
+			}
+			$name = strtolower( (string) array_shift( $tokens ) );
+			if ( $name === 'style-src' ) {
+				$governing = $tokens;
+				break;
+			}
+			if ( $name === 'default-src' && $governing === null ) {
+				$governing = $tokens;
+			}
+		}
+
+		if ( $governing === null ) {
+			return true;
+		}
+
+		$governing = array_map( 'strtolower', $governing );
+		foreach ( $governing as $token ) {
+			if ( str_starts_with( $token, "'nonce-" ) || preg_match( "/^'sha(256|384|512)-/", $token ) === 1 ) {
+				return false;
+			}
+		}
+
+		return in_array( "'unsafe-inline'", $governing, true );
 	}
 
 	private function inject_after_body_open( string $html, string $injection ): string {

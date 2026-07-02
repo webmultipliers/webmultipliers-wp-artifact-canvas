@@ -26,8 +26,8 @@ class Revisions {
 				continue;
 			}
 
-			$from_html = $this->extract_html( $compare_from );
-			$to_html   = $this->extract_html( $compare_to );
+			$from_html = $this->split_for_diff( $this->extract_html( $compare_from ) );
+			$to_html   = $this->split_for_diff( $this->extract_html( $compare_to ) );
 			$diff      = wp_text_diff( $from_html, $to_html, array( 'show_split_view' => true ) );
 
 			if ( $diff ) {
@@ -67,6 +67,26 @@ class Revisions {
 		}
 
 		return false;
+	}
+
+	/**
+	 * wp_text_diff() compares line-by-line, so a minified single-line
+	 * document diffs as "everything deleted, everything added". When the
+	 * HTML is effectively unlined, break it at tag boundaries first — both
+	 * sides get the identical transform, so the diff stays faithful.
+	 */
+	private function split_for_diff( string $html ): string {
+		if ( $html === '' ) {
+			return $html;
+		}
+
+		// Average > 400 chars per line ≈ minified output.
+		$lines = substr_count( $html, "\n" ) + 1;
+		if ( strlen( $html ) / $lines <= 400 ) {
+			return $html;
+		}
+
+		return (string) preg_replace( '/>\s*</', ">\n<", $html );
 	}
 
 	private function extract_html( \WP_Post $post ): string {

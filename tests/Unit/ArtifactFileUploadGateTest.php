@@ -25,7 +25,8 @@ final class ArtifactFileUploadGateTest extends TestCase {
 	}
 
 	public function test_stored_file_is_kses_filtered_in_place(): void {
-		Functions\when( 'wp_kses_post' )->alias(
+		Functions\when( 'wp_kses_allowed_html' )->justReturn( [] );
+		Functions\when( 'wp_kses' )->alias(
 			static function ( string $s ) {
 				return (string) preg_replace( '#<script.*?</script>#is', '', $s );
 			}
@@ -44,7 +45,8 @@ final class ArtifactFileUploadGateTest extends TestCase {
 	}
 
 	public function test_clean_file_is_left_untouched(): void {
-		Functions\when( 'wp_kses_post' )->returnArg( 1 );
+		Functions\when( 'wp_kses_allowed_html' )->justReturn( [] );
+		Functions\when( 'wp_kses' )->returnArg( 1 );
 
 		$path = sys_get_temp_dir() . '/wmac-store-' . uniqid( '', true ) . '.html';
 		$html = '<!doctype html><html><body><p>clean</p></body></html>';

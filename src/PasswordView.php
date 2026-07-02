@@ -24,6 +24,18 @@ class PasswordView {
 			$logo_block = '<div class="logo">' . $logo_html . '</div>';
 		}
 
+		// The gate page bypasses the theme (by design), so wp_head/wp_footer
+		// never run. These buffered actions are the integration point for
+		// compliance banners, analytics, or translation tooling that must
+		// also appear on the password barrier.
+		ob_start();
+		do_action( 'wmac_password_view_head', $post );
+		$head_extra = (string) ob_get_clean();
+
+		ob_start();
+		do_action( 'wmac_password_view_footer', $post );
+		$footer_extra = (string) ob_get_clean();
+
 		// phpcs:disable WordPress.Security.EscapeOutput -- all variables in this template are pre-escaped above.
 		echo <<<HTML
 		<!doctype html>
@@ -41,12 +53,15 @@ class PasswordView {
 		input[type=password]{width:100%;padding:.5rem;margin:.5rem 0 1rem;box-sizing:border-box}
 		input[type=submit]{cursor:pointer}
 		</style>
+		{$head_extra}
 		</head>
 		<body><div class="card">
 		{$logo_block}
 		<h1>{$title}</h1>
 		{$form}
-		</div></body></html>
+		</div>
+		{$footer_extra}
+		</body></html>
 		HTML;
 		// phpcs:enable
 	}

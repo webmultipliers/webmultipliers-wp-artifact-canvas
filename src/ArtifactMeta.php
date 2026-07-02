@@ -10,6 +10,7 @@ namespace WebMultipliers\ArtifactCanvas;
  *
  * Meta keys:
  *   _wmac_prompt      — generation prompt / notes (private, plain text)
+ *   _wmac_description — human description; feeds og:description / meta description
  *   _wmac_noindex     — override noindex: '' = use global, '1' = force on, '0' = force off
  *   _wmac_seo_enabled — override SEO meta injection: '' = use global, '1' = on, '0' = off
  *   _wmac_csp         — per-artifact CSP value (overrides global wmac_csp filter)
@@ -17,6 +18,7 @@ namespace WebMultipliers\ArtifactCanvas;
 class ArtifactMeta {
 
 	public const PROMPT      = '_wmac_prompt';
+	public const DESCRIPTION = '_wmac_description';
 	public const NOINDEX     = '_wmac_noindex';
 	public const SEO_ENABLED = '_wmac_seo_enabled';
 	public const CSP         = '_wmac_csp';
@@ -45,7 +47,29 @@ class ArtifactMeta {
 				array(
 					'type'              => 'string',
 					'description'       => 'Generation prompt / notes for this artifact.',
-					'sanitize_callback' => 'sanitize_textarea_field',
+					'sanitize_callback' => static function ( $v ): string {
+						// Cap the stored length — unbounded prompt dumps bloat postmeta.
+						$max = (int) apply_filters( 'wmac_max_prompt_length', 20000 );
+						return mb_substr( sanitize_textarea_field( (string) $v ), 0, $max );
+					},
+					'auth_callback'     => static function ( bool $allowed, string $meta_key, int $post_id ): bool {
+						return current_user_can( 'edit_post', $post_id );
+					},
+				)
+			)
+		);
+
+		register_post_meta(
+			PostType::KEY,
+			self::DESCRIPTION,
+			array_merge(
+				$shared,
+				array(
+					'type'              => 'string',
+					'description'       => 'Human-readable description of the artifact; used for og:description and the meta description tag.',
+					'sanitize_callback' => static function ( $v ): string {
+						return mb_substr( sanitize_textarea_field( (string) $v ), 0, 5000 );
+					},
 					'auth_callback'     => static function ( bool $allowed, string $meta_key, int $post_id ): bool {
 						return current_user_can( 'edit_post', $post_id );
 					},
@@ -97,9 +121,7 @@ class ArtifactMeta {
 				array(
 					'type'              => 'string',
 					'description'       => 'Per-artifact Content-Security-Policy header value.',
-					'sanitize_callback' => static function ( $v ): string {
-						return str_replace( array( "\r", "\n" ), '', sanitize_text_field( (string) $v ) );
-					},
+					'sanitize_callback' => array( self::class, 'sanitize_csp' ),
 					'auth_callback'     => static function ( bool $allowed, string $meta_key, int $post_id ): bool {
 						return current_user_can( 'edit_post', $post_id );
 					},
@@ -161,6 +183,9 @@ class ArtifactMeta {
 							$entry = array( 'mode' => $mode );
 							if ( $mode === 'static' ) {
 								$entry['value'] = sanitize_text_field( (string) ( $config['value'] ?? '' ) );
+
+								$context          = (string) ( $config['context'] ?? 'text' );
+								$entry['context'] = in_array( $context, array( 'text', 'attr', 'url' ), true ) ? $context : 'text';
 							}
 							$clean[ $safe_tag ] = $entry;
 						}
@@ -172,6 +197,21 @@ class ArtifactMeta {
 				)
 			)
 		);
+	}
+
+	/**
+	 * Sanitizes a Content-Security-Policy value without corrupting it.
+	 * sanitize_text_field strips angle brackets and percent-encoded octets,
+	 * which can mangle hash/nonce source expressions and report URIs; a CSP
+	 * header only needs printable ASCII with header-splitting characters
+	 * removed.
+	 *
+	 * @param mixed $value Raw CSP input.
+	 */
+	public static function sanitize_csp( $value ): string {
+		$value = preg_replace( '/[^\x20-\x7E]/', '', (string) $value ) ?? '';
+
+		return trim( preg_replace( '/\s+/', ' ', $value ) ?? '' );
 	}
 
 	public function filter_noindex( bool $noindex, \WP_Post $post ): bool {

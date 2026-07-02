@@ -16,8 +16,23 @@
 		el.classList.toggle( 'wmac-save-status--error', !! isError );
 	}
 
+	// Last value successfully sent per meta key. Skipping identical re-sends
+	// (debounce + blur double-fire) avoids pointless requests and a core
+	// gotcha: update_metadata() returns false when the sanitized value equals
+	// the stored one, which the REST API surfaces as a 500 even though
+	// nothing is wrong.
+	var lastSaved = {};
+
 	function saveMeta( metaKey, value, statusEl ) {
-		if ( ! postId ) return;
+		if ( ! postId ) {
+			setStatus( statusEl, wp.i18n.__( 'Save the post first', 'webmultipliers-wp-artifact-canvas' ), true );
+			return;
+		}
+
+		if ( Object.prototype.hasOwnProperty.call( lastSaved, metaKey ) && lastSaved[ metaKey ] === value ) {
+			return;
+		}
+
 		setStatus( statusEl, wp.i18n.__( 'Saving…', 'webmultipliers-wp-artifact-canvas' ) );
 
 		var data    = { meta: {} };
@@ -28,6 +43,7 @@
 			method: 'PATCH',
 			data:   data,
 		} ).then( function () {
+			lastSaved[ metaKey ] = value;
 			setStatus( statusEl, wp.i18n.__( 'Saved', 'webmultipliers-wp-artifact-canvas' ) );
 			setTimeout( function () {
 				if ( statusEl && statusEl.textContent === wp.i18n.__( 'Saved', 'webmultipliers-wp-artifact-canvas' ) ) {
@@ -35,6 +51,7 @@
 				}
 			}, 2000 );
 		} ).catch( function ( err ) {
+			delete lastSaved[ metaKey ]; // let the user retry
 			var message = ( err && err.message ) ? err.message : wp.i18n.__( 'Error saving', 'webmultipliers-wp-artifact-canvas' );
 			setStatus( statusEl, message, true );
 		} );
@@ -60,7 +77,15 @@
 			var statusEl = wrapper ? wrapper.querySelector( '.wmac-save-status' ) : null;
 
 			function getValue() {
-				return el.type === 'checkbox' ? ( el.checked ? '1' : '0' ) : el.value;
+				if ( el.type === 'checkbox' ) {
+					return el.checked ? '1' : '0';
+				}
+				if ( el.type === 'number' ) {
+					// Integer-typed meta rejects '' at the REST schema layer;
+					// a cleared field means 0 (= unlimited for max views).
+					return parseInt( el.value, 10 ) || 0;
+				}
+				return el.value;
 			}
 
 			var save = function () { saveMeta( metaKey, getValue(), statusEl ); };
@@ -87,6 +112,8 @@
 			var entry = { mode: mode };
 			if ( mode === 'static' ) {
 				entry.value = row.querySelector( '.wmac-tag-value' ).value;
+				var contextEl = row.querySelector( '.wmac-tag-context' );
+				entry.context = contextEl ? contextEl.value : 'text';
 			}
 			map[ tag ] = entry;
 		} );
@@ -104,19 +131,27 @@
 		var mode      = row.querySelector( '.wmac-tag-mode' ).value;
 		var valueEl   = row.querySelector( '.wmac-tag-value' );
 		var hookEl    = row.querySelector( '.wmac-mgmt__hook' );
+		var contextEl = row.querySelector( '.wmac-tag-context' );
 		valueEl.style.display = mode === 'dynamic' ? 'none' : '';
 		hookEl.style.display  = mode === 'static'  ? 'none' : '';
+		if ( contextEl ) {
+			contextEl.style.display = mode === 'dynamic' ? 'none' : '';
+		}
 	}
 
 	function wireTagRow( row, wrapper ) {
 		var modeEl  = row.querySelector( '.wmac-tag-mode' );
 		var valueEl = row.querySelector( '.wmac-tag-value' );
 		var removeEl = row.querySelector( '.wmac-tag-remove' );
+		var contextEl = row.querySelector( '.wmac-tag-context' );
 
 		modeEl.addEventListener( 'change', function () {
 			toggleTagRowMode( row );
 			saveTagMap( wrapper );
 		} );
+		if ( contextEl ) {
+			contextEl.addEventListener( 'change', function () { saveTagMap( wrapper ); } );
+		}
 		valueEl.addEventListener( 'input', debounce( function () { saveTagMap( wrapper ); }, 600 ) );
 		valueEl.addEventListener( 'blur', function () { saveTagMap( wrapper ); } );
 		removeEl.addEventListener( 'click', function () {

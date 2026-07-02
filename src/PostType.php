@@ -32,7 +32,13 @@ class PostType {
 				'public'          => true,
 				'show_in_rest'    => true,
 				'menu_icon'       => 'dashicons-media-code',
-				'supports'        => array( 'title', 'editor', 'author', 'revisions' ),
+				// 'custom-fields' is load-bearing: without it the REST posts
+				// controller omits `meta` from the item schema and silently
+				// discards every meta write — the metabox autosave, the merge
+				// tag / asset map repeaters, and the sidebar panels all save
+				// through that path. The Custom Fields UI panel stays hidden
+				// regardless because all plugin keys are underscore-protected.
+				'supports'        => array( 'title', 'editor', 'author', 'revisions', 'custom-fields' ),
 				'rewrite'         => array( 'slug' => 'artifact' ),
 				'template'        => array( array( 'wmac/artifact' ) ),
 				'template_lock'   => 'all',

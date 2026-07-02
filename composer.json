@@ -35,8 +35,16 @@
         "lint:fix": "phpcbf",
         "analyse": "phpstan analyse --memory-limit=1G",
         "test": "phpunit",
-        "build": "bash bin/build-zip.sh",
-        "package": "@build"
+        "vendor:dev": "bash bin/vendor-mode.sh dev",
+        "vendor:prod": "bash bin/vendor-mode.sh prod",
+        "build:zip": "bash bin/build-zip.sh",
+        "build:dev": "@vendor:dev",
+        "build:prod": [
+            "@vendor:prod",
+            "@build:zip"
+        ],
+        "build": "@build:prod",
+        "package": "@build:prod"
     },
     "config": {
         "optimize-autoloader": true,

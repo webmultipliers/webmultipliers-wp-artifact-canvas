@@ -53,6 +53,22 @@
 	font-family: inherit;
 }
 
+.wmac-field__textarea--code {
+	font-family: Menlo, Consolas, "SF Mono", "Courier New", monospace;
+	font-size: 12px;
+	line-height: 1.6;
+	tab-size: 2;
+	white-space: pre;
+	overflow-x: auto;
+}
+
+.wmac-field__textarea:disabled,
+.wmac-field__input:disabled {
+	background: #f0f0f1;
+	color: #757575;
+	cursor: not-allowed;
+}
+
 .wmac-field__help {
 	margin: 0;
 	color: #757575;
@@ -203,6 +219,12 @@
 	padding: 0 6px;
 	border: 1px solid #757575;
 	border-radius: 2px;
+}
+
+/* Mode + escaping-context selects stack in one cell. */
+.wmac-mgmt__table select.wmac-tag-context {
+	margin-top: 4px;
+	display: block;
 }
 
 /* ---- Add row ---- */

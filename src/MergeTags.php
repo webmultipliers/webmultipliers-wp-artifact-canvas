@@ -8,10 +8,18 @@ namespace WebMultipliers\ArtifactCanvas;
  * Replaces {{tag_name}} placeholders in rendered HTML at request time.
  *
  * Two modes per tag (configured via _wmac_tag_map post meta):
- *   static  — replaces with a sanitized string value stored in the map.
+ *   static  — replaces with a sanitized string value stored in the map. An
+ *             optional 'context' field selects the escaping applied at render
+ *             time: 'text' (esc_html, default), 'attr' (esc_attr, for
+ *             placeholders inside attribute values), or 'url' (esc_url, which
+ *             also rejects unsafe protocols like javascript:).
  *   dynamic — fires the `wmac_resolve_tag_{tag_name}` filter; the hooked
  *             function receives ($default = '', $post_id) and is responsible
  *             for escaping its return value for the HTML context it targets.
+ *
+ * Escaping for client-side template syntax: write \{{tag}} to emit a literal
+ * {{tag}} (backslash removed, no server-side substitution) so Vue/Alpine/
+ * Mustache placeholders that collide with a configured tag name survive.
  *
  * Built-in tags (no map configuration required):
  *   {{wp_post_title}}         — artifact post title
@@ -92,16 +100,35 @@ class MergeTags {
 		}
 
 		$result = preg_replace_callback(
-			'/\{\{([a-zA-Z0-9_]+)\}\}/',
+			'/(\\\\?)\{\{([a-zA-Z0-9_]+)\}\}/',
 			function ( array $matches ) use ( $map, $post ): string {
-				$tag    = $matches[1];
+				// \{{tag}} escapes client-side template syntax: emit the
+				// literal placeholder (backslash removed), never substitute.
+				if ( $matches[1] !== '' ) {
+					return '{{' . $matches[2] . '}}';
+				}
+
+				$tag    = $matches[2];
 				$config = isset( $map[ $tag ] ) && is_array( $map[ $tag ] ) ? $map[ $tag ] : null;
 
 				if ( $config !== null ) {
 					$mode = isset( $config['mode'] ) && $config['mode'] === 'dynamic' ? 'dynamic' : 'static';
 
 					if ( $mode === 'static' ) {
-						return esc_html( (string) ( $config['value'] ?? '' ) );
+						$value   = (string) ( $config['value'] ?? '' );
+						$context = (string) ( $config['context'] ?? 'text' );
+
+						// Escape for the HTML context the author placed the
+						// placeholder in; esc_url additionally drops unsafe
+						// protocols (javascript: etc.).
+						switch ( $context ) {
+							case 'attr':
+								return esc_attr( $value );
+							case 'url':
+								return esc_url( $value );
+							default:
+								return esc_html( $value );
+						}
 					}
 
 					// Dynamic: developer resolves via filter and is responsible for escaping.

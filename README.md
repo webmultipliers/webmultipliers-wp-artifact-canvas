@@ -28,7 +28,7 @@ It exists because WordPress is excellent at access control, URLs, revisions, and
 - **Sandboxed editor preview.** The artifact previews inside an isolated `<iframe>` in the editor, so its CSS and JS never leak into wp-admin.
 - **File upload and server-side attachment.** Load an artifact from a local `.html` file directly in the editor. Optionally attach the file to the server so large artifacts don't consume block-attribute storage.
 - **Media Library asset mapping.** Artifacts that reference relative paths (`src="assets/logo.png"`) can have those paths mapped to Media Library URLs via the Asset Mapping metabox. Replacement happens at render time — the stored HTML is never modified.
-- **Merge tag templating.** Embed `{{tag_name}}` placeholders in an artifact's HTML and configure each tag's value in the Merge Tags metabox. Thirteen built-in tags resolve WP post and site data automatically. Custom tags support static string replacement or server-side dynamic resolution via a PHP filter hook — no code inside the HTML required.
+- **Merge tag templating.** Embed `{{tag_name}}` placeholders in an artifact's HTML and configure each tag's value in the Merge Tags metabox. Thirteen built-in tags resolve WP post and site data automatically. Custom tags support static replacement with context-aware escaping (`text`, `attr`, `url`) or server-side dynamic resolution via a PHP filter hook — no code inside the HTML required.
 - **Access rules honored.** Draft, private, password-protected, and scheduled canvases behave the way any WordPress post would. Password-protected canvases get a clean, theme-free entry screen.
 - **Capability-aware sanitization.** Authors without the capability to post raw markup have their content run through `wp_kses_post` on save, the same as core.
 - **oEmbed provider.** Paste any published artifact URL into another Gutenberg editor and it embeds as a live iframe.
@@ -83,11 +83,12 @@ Two quick-reference panels appear in the Post sidebar (Document tab):
 
 ### Management metaboxes
 
-Five full-width metaboxes appear below the code editor, one per concern. Each is a standalone PHP `add_meta_box()` — not a single tabbed panel — so every section gets its own scroll position and heading.
+Six full-width metaboxes appear below the code editor, one per concern. Each is a standalone PHP `add_meta_box()` — not a single tabbed panel — so every section gets its own scroll position and heading.
 
 | Metabox | Fields |
 | --- | --- |
 | **Artifact Settings** | Custom URL alias, noindex override, SEO meta injection toggle, Content Security Policy, generation prompt |
+| **Custom Code & External Assets** | External stylesheet URLs, external script URLs, raw `<head>` markup, raw pre-`</body>` markup |
 | **Link Governance** | Expiry date (ISO 8601), max public views, live view count (read-only) |
 | **Tracking & Webhooks** | Analytics snippet (injected before `</head>`), view alert webhook URL |
 | **Merge Tags** | Detect and configure `{{tag}}` placeholders — set static replacement values or mark tags as dynamic |
@@ -107,7 +108,7 @@ Embed `{{placeholders}}` anywhere in an artifact's HTML. The **Merge Tags** meta
 
 | Mode | Behaviour |
 | --- | --- |
-| **Static string** | Admin enters a value in the metabox. Saved to post meta and substituted at render time with `esc_html()`. |
+| **Static string** | Admin enters a value in the metabox. Saved to post meta and substituted at render time with context-aware escaping (`esc_html` for text, `esc_attr` for attributes, `esc_url` for URLs). |
 | **Dynamic hook** | The tag is resolved at request time by a PHP filter. The admin marks the tag as dynamic; a developer hooks the filter. |
 
 ### Built-in tags
@@ -182,7 +183,7 @@ Global defaults currently include:
 1. **Post type.** Registers a custom post type (`wm_artifact`, labeled "Artifacts") with a locked editor template containing one Artifact Canvas block.
 2. **Storage.** The pasted document is stored as an attribute on the block (or as a protected file on disk for the server-attachment mode), making it the canonical source of truth.
 3. **Interception.** On `template_redirect`, a single-artifact request short-circuits the normal template hierarchy.
-4. **Rendering pipeline.** The plugin reads the stored HTML, then passes it through the `wmac_rendered_html` filter. Built-in subscribers run in this order: AssetMapper (priority 10), then SeoMeta and MergeTags both at priority 20 (SeoMeta first by registration order), then ClientTracking (priority 30). Third-party code can hook at any priority.
+4. **Rendering pipeline.** The plugin reads the stored HTML, then passes it through the `wmac_rendered_html` filter. Built-in subscribers run in this order: AssetMapper (priority 10), CodeInjection (priority 15), then SeoMeta and MergeTags both at priority 20 (SeoMeta first by registration order), then ClientTracking (priority 30). Third-party code can hook at any priority.
 5. **Output.** Correct content-type and security headers are sent, the HTML is echoed, and the process exits — a 1:1 render. Nothing from WordPress is appended.
 6. **Protected views.** If the post requires a password, a minimal standalone HTML shell with the password form is served instead, still fully isolated from the theme.
 7. **Author toolbar injection (optional).** On passthrough responses, the plugin can inject either a custom management bar or the core admin bar for authorized users without involving the theme template stack.
@@ -290,7 +291,12 @@ composer lint          # PHPCS (WordPress-Extra)
 composer lint:fix      # PHPCBF auto-fix
 composer analyse       # PHPStan level 6 over src/
 composer test          # PHPUnit unit suite (no WordPress install required)
-composer build         # build the distributable ZIP (bin/build-zip.sh)
+composer build:prod    # clean local vendor to prod-only, then build distributable ZIP
+composer build:dev     # reset local vendor back to dev dependencies
+composer vendor:prod   # switch local vendor to production dependencies only
+composer vendor:dev    # switch local vendor to development dependencies
+composer build:zip     # build distributable ZIP from staged tree (always clean prod vendor)
+composer build         # alias of build:prod
 ```
 
 A [`.wp-env.json`](.wp-env.json) is included — run `npx @wordpress/env start` for a disposable WordPress with the plugin active at `http://localhost:8888` (admin/password).

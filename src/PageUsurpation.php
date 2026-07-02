@@ -97,7 +97,7 @@ class PageUsurpation {
 			exit;
 		}
 
-		$html = $this->get_artifact_html( $artifact );
+		$html = Renderer::get_artifact_html( $artifact );
 		if ( $html === '' ) {
 			return;
 		}
@@ -173,24 +173,6 @@ class PageUsurpation {
 		} else {
 			delete_post_meta( $post_id, self::META_KEY );
 		}
-	}
-
-	private function get_artifact_html( \WP_Post $artifact ): string {
-		$file_path = ArtifactFile::get_file_path( $artifact->ID );
-		if ( $file_path !== null && is_readable( $file_path ) ) {
-			$content = file_get_contents( $file_path ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents -- local artifact file, not remote.
-			if ( $content !== false ) {
-				return $content;
-			}
-		}
-
-		$blocks = parse_blocks( $artifact->post_content );
-		foreach ( $blocks as $block ) {
-			if ( $block['blockName'] === 'wmac/artifact' ) {
-				return $block['attrs']['html'] ?? '';
-			}
-		}
-		return '';
 	}
 
 	private function send_headers( \WP_Post $post ): void {

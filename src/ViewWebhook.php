@@ -61,7 +61,7 @@ class ViewWebhook {
 			'timestamp'   => gmdate( 'c' ),
 			'ip'          => $this->get_client_ip(),
 			'user_agent'  => isset( $_SERVER['HTTP_USER_AGENT'] )
-				? substr( wp_unslash( (string) $_SERVER['HTTP_USER_AGENT'] ), 0, 255 )
+				? mb_substr( wp_unslash( (string) $_SERVER['HTTP_USER_AGENT'] ), 0, 255 )
 				: '',
 		);
 
@@ -79,16 +79,28 @@ class ViewWebhook {
 		);
 	}
 
+	/**
+	 * Client IP for the webhook payload. Only REMOTE_ADDR is trusted by
+	 * default: forwarding headers (X-Forwarded-For, CF-Connecting-IP, …) are
+	 * client-supplied and trivially spoofable unless the site actually sits
+	 * behind that proxy. Sites behind a trusted proxy opt in:
+	 *
+	 *   add_filter( 'wmac_view_webhook_ip_headers', fn() =>
+	 *       array( 'HTTP_CF_CONNECTING_IP', 'REMOTE_ADDR' ) );
+	 */
 	private function get_client_ip(): string {
-		$headers = array( 'HTTP_CF_CONNECTING_IP', 'HTTP_X_FORWARDED_FOR', 'HTTP_X_REAL_IP', 'REMOTE_ADDR' );
+		$headers = (array) apply_filters( 'wmac_view_webhook_ip_headers', array( 'REMOTE_ADDR' ) );
+
 		foreach ( $headers as $header ) {
-			if ( ! empty( $_SERVER[ $header ] ) ) {
-				$ip = trim( (string) explode( ',', wp_unslash( (string) $_SERVER[ $header ] ) )[0] );
-				if ( filter_var( $ip, FILTER_VALIDATE_IP ) ) {
-					return $ip;
-				}
+			if ( ! is_string( $header ) || empty( $_SERVER[ $header ] ) ) {
+				continue;
+			}
+			$ip = trim( (string) explode( ',', wp_unslash( (string) $_SERVER[ $header ] ) )[0] );
+			if ( filter_var( $ip, FILTER_VALIDATE_IP ) ) {
+				return $ip;
 			}
 		}
+
 		return '';
 	}
 }
