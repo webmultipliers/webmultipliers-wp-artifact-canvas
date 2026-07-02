@@ -135,7 +135,7 @@ final class SecurityTest extends TestCase {
 	}
 
 	public function test_empty_title_is_populated_from_html_title_tag(): void {
-		$html = '<html><head><title>Extracted &amp; Title</title></head><body></body></html>';
+		$html = $this->artifact_fixture( 'hello-world.html', [ 'wp_post_title' => 'Extracted &amp; Title' ] );
 
 		Functions\expect( 'wp_is_post_autosave' )->once()->andReturn( false );
 		Functions\expect( 'wp_is_post_revision' )->once()->andReturn( false );

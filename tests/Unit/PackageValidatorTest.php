@@ -54,19 +54,22 @@ final class PackageValidatorTest extends TestCase {
 	}
 
 	public function test_extracts_root_index_html(): void {
-		$zip = $this->build_zip( [ 'index.html' => '<!doctype html><html><body>Hi</body></html>' ] );
+		$html = $this->artifact_fixture( 'hello-world.html', [ 'wp_post_title' => 'Fixture Root' ] );
+		$zip  = $this->build_zip( [ 'index.html' => $html ] );
 
 		$result = ( new PackageValidator() )->extract_entry_html( $zip );
 
-		$this->assertSame( '<!doctype html><html><body>Hi</body></html>', $result );
+		$this->assertSame( $html, $result );
 	}
 
 	public function test_strips_github_style_prefix_directory(): void {
-		$zip = $this->build_zip( [ 'repo-main/index.html' => '<html><body>Prefixed</body></html>' ] );
+		$inner = $this->artifact_fixture_inner_content( 'hello-world.html', [ 'wp_post_title' => 'Prefixed Fixture' ] );
+		$html  = '<!doctype html><html><body>' . $inner . '</body></html>';
+		$zip   = $this->build_zip( [ 'repo-main/index.html' => $html ] );
 
 		$result = ( new PackageValidator() )->extract_entry_html( $zip );
 
-		$this->assertSame( '<html><body>Prefixed</body></html>', $result );
+		$this->assertSame( $html, $result );
 	}
 
 	public function test_missing_index_html_is_rejected(): void {

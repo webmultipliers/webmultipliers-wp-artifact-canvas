@@ -84,6 +84,288 @@
 	gap: 8px;
 }
 
+.wp-block-wmac-artifact .wmac-preview-loading {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 6px 0;
+	font-size: 12px;
+	color: #50575e;
+}
+
+.wmac-config-modal {
+	width: min(1080px, 92vw);
+	max-width: 1080px;
+}
+
+.wmac-config-modal .components-modal__content {
+	margin-top: 56px;
+	padding-top: 12px;
+}
+
+.wmac-config-header {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	gap: 12px;
+	margin: 0 0 12px;
+}
+
+.wmac-config-header-actions {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	flex-wrap: wrap;
+}
+
+.wmac-config-subtitle {
+	margin: 0;
+	color: #50575e;
+	font-size: 13px;
+}
+
+.wmac-config-loading {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	margin: 12px 0;
+	font-size: 13px;
+	color: #1d2327;
+}
+
+.wmac-config-error {
+	margin: 10px 0;
+	color: #b32d2e;
+	font-size: 13px;
+}
+
+.wmac-config-content {
+	max-height: 70vh;
+	overflow: auto;
+	padding-right: 8px;
+}
+
+.wmac-config-section {
+	margin: 0 0 20px;
+	padding: 12px;
+	border: 1px solid #dcdcde;
+	border-radius: 6px;
+	background: #fff;
+}
+
+.wmac-config-section h3 {
+	margin: 0 0 10px;
+	font-size: 15px;
+}
+
+.wmac-config-signals {
+	list-style: none;
+	margin: 0;
+	padding: 0;
+	display: flex;
+	flex-direction: column;
+	gap: 10px;
+}
+
+.wmac-config-signal {
+	display: flex;
+	align-items: flex-start;
+	gap: 10px;
+	padding: 10px;
+	border: 1px solid #dcdcde;
+	border-radius: 6px;
+	background: #f8f9f9;
+}
+
+.wmac-config-signal-copy strong {
+	display: block;
+	margin: 0 0 4px;
+	font-size: 13px;
+	line-height: 1.3;
+}
+
+.wmac-config-signal-copy p {
+	margin: 0;
+	font-size: 12px;
+	line-height: 1.4;
+	color: #50575e;
+}
+
+.wmac-config-signal-jump {
+	margin-top: 4px;
+	padding: 0 !important;
+	min-height: 0 !important;
+	font-size: 12px !important;
+}
+
+.wmac-config-signal-empty {
+	margin: 0;
+	font-size: 13px;
+	color: #646970;
+}
+
+.wmac-config-badge {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	min-width: 58px;
+	padding: 2px 8px;
+	border-radius: 999px;
+	font-size: 11px;
+	font-weight: 600;
+	line-height: 1.6;
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+	white-space: nowrap;
+}
+
+.wmac-config-badge--high {
+	background: #fbeaea;
+	color: #8a2424;
+	border: 1px solid #e7b3b3;
+}
+
+.wmac-config-badge--medium {
+	background: #fff5e6;
+	color: #8a5a00;
+	border: 1px solid #ebd2a4;
+}
+
+.wmac-config-badge--low {
+	background: #eef4ff;
+	color: #1e4f9e;
+	border: 1px solid #c5d7f3;
+}
+
+.wmac-config-grid {
+	display: grid;
+	grid-template-columns: 200px 1fr;
+	column-gap: 12px;
+	row-gap: 8px;
+	margin: 0;
+	font-size: 13px;
+}
+
+.wmac-config-grid dt {
+	margin: 0;
+	font-weight: 600;
+	color: #1d2327;
+}
+
+.wmac-config-grid dd {
+	margin: 0;
+	word-break: break-word;
+	color: #2c3338;
+}
+
+.wmac-config-table {
+	width: 100%;
+	border-collapse: collapse;
+	font-size: 12px;
+}
+
+.wmac-config-table th,
+.wmac-config-table td {
+	padding: 8px;
+	border: 1px solid #dcdcde;
+	vertical-align: top;
+}
+
+.wmac-config-table tr.wmac-config-row--focus {
+	animation: wmacConfigRowFocus 1.6s ease;
+}
+
+@keyframes wmacConfigRowFocus {
+	0% {
+		background: #fffbe6;
+	}
+	100% {
+		background: transparent;
+	}
+}
+
+.wmac-config-table th {
+	background: #f6f7f7;
+	text-align: left;
+	font-weight: 600;
+	position: sticky;
+	top: 0;
+	z-index: 1;
+}
+
+.wmac-config-key {
+	width: 220px;
+	font-weight: 500;
+	color: #1d2327;
+}
+
+.wmac-config-meta-key {
+	width: 190px;
+	font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, "Liberation Mono", monospace;
+	font-size: 11px;
+	color: #50575e;
+	word-break: break-all;
+}
+
+.wmac-config-value {
+	display: inline-block;
+	max-width: 100%;
+	word-break: break-word;
+}
+
+.wmac-config-value--unset {
+	color: #8c8f94;
+	font-style: italic;
+}
+
+.wmac-config-value--details summary {
+	cursor: pointer;
+	color: #135e96;
+}
+
+.wmac-config-pre {
+	margin: 0;
+	padding: 8px;
+	max-width: 100%;
+	overflow: auto;
+	background: #f6f7f7;
+	border: 1px solid #dcdcde;
+	border-radius: 4px;
+	font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, "Liberation Mono", monospace;
+	font-size: 11px;
+	line-height: 1.45;
+}
+
+.wmac-config-collected-at {
+	margin: 8px 0 0;
+	font-size: 11px;
+	color: #646970;
+}
+
+@media (max-width: 782px) {
+	.wmac-config-header {
+		flex-direction: column;
+		align-items: flex-start;
+	}
+
+	.wmac-config-header-actions {
+		width: 100%;
+	}
+
+	.wmac-config-grid {
+		grid-template-columns: 1fr;
+	}
+
+	.wmac-config-signal {
+		flex-direction: column;
+	}
+
+	.wmac-config-key,
+	.wmac-config-meta-key {
+		width: auto;
+	}
+}
+
 /* ---- Lifecycle Status panel ---- */
 
 .wmac-lifecycle-panel {

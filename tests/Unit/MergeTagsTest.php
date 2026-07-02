@@ -127,4 +127,77 @@ final class MergeTagsTest extends TestCase {
 
 		$this->assertSame( '<a href="">x</a>', $html );
 	}
+
+	public function test_static_empty_tag_uses_fallback_value(): void {
+		$map = (string) json_encode( [
+			'client_name' => [ 'mode' => 'static', 'value' => '' ],
+		] );
+
+		Functions\expect( 'get_post_meta' )
+			->once()
+			->with( 7, ArtifactMeta::TAG_MAP, true )
+			->andReturn( $map );
+
+		$html = ( new MergeTags() )->apply_tags( 'Hello {{client_name || "fallback title"}}!', $this->post() );
+
+		$this->assertSame( 'Hello fallback title!', $html );
+	}
+
+	public function test_static_attr_context_empty_tag_uses_escaped_fallback_value(): void {
+		Functions\when( 'esc_attr' )->alias(
+			static function ( string $s ) {
+				return 'ATTR(' . $s . ')';
+			}
+		);
+
+		$map = (string) json_encode( [
+			'cls' => [ 'mode' => 'static', 'value' => '', 'context' => 'attr' ],
+		] );
+
+		Functions\expect( 'get_post_meta' )->once()->andReturn( $map );
+
+		$html = ( new MergeTags() )->apply_tags( '<div class="{{cls || "default-class"}}">', $this->post() );
+
+		$this->assertSame( '<div class="ATTR(default-class)">', $html );
+	}
+
+	public function test_dynamic_empty_tag_uses_fallback_value(): void {
+		$map = (string) json_encode( [
+			'raw_widget' => [ 'mode' => 'dynamic' ],
+		] );
+
+		Functions\expect( 'get_post_meta' )
+			->once()
+			->with( 7, ArtifactMeta::TAG_MAP, true )
+			->andReturn( $map );
+
+		Functions\expect( 'apply_filters' )
+			->once()
+			->with( 'wmac_resolve_tag_raw_widget', '', 7 )
+			->andReturn( '' );
+
+		$html = ( new MergeTags() )->apply_tags( '{{raw_widget || "fallback widget"}}', $this->post() );
+
+		$this->assertSame( 'fallback widget', $html );
+	}
+
+	public function test_unknown_tag_with_fallback_uses_fallback_value(): void {
+		Functions\expect( 'get_post_meta' )->once()->andReturn( '' );
+		Functions\expect( 'has_filter' )->once()->with( 'wmac_resolve_tag_totally_unknown' )->andReturn( false );
+		Functions\expect( 'apply_filters' )->never();
+
+		$html = ( new MergeTags() )->apply_tags( 'X: {{totally_unknown || "missing"}}', $this->post() );
+
+		$this->assertSame( 'X: missing', $html );
+	}
+
+	public function test_backslash_escaped_tag_with_fallback_emits_literal_placeholder(): void {
+		Functions\expect( 'get_post_meta' )->once()->andReturn( '' );
+		Functions\expect( 'has_filter' )->never();
+		Functions\expect( 'apply_filters' )->never();
+
+		$html = ( new MergeTags() )->apply_tags( 'X: \{{wp_post_title || "fallback title"}}', $this->post() );
+
+		$this->assertSame( 'X: {{wp_post_title || "fallback title"}}', $html );
+	}
 }

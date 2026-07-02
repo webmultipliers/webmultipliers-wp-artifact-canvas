@@ -14,8 +14,10 @@ namespace WebMultipliers\ArtifactCanvas;
  * Saving the snippet requires unfiltered_html capability (admin/super-admin)
  * since arbitrary <script> tags are allowed.
  *
- * Compatible with Plausible (<script defer data-domain="…" src="…/plausible.js">),
- * Fathom (<script src="…/script.js" data-site="…" defer>), or any tag-based snippet.
+ * Compatible with Plausible (<script defer data-domain="…" src="…/plausible.js"></script>),
+ * Fathom (<script src="…/script.js" data-site="…" defer></script>), or any
+ * tag-based snippet. Unclosed <script>/<style> tags are closed at injection
+ * time so a truncated snippet cannot swallow the rest of the document.
  */
 class ClientTracking {
 
@@ -52,7 +54,7 @@ class ClientTracking {
 			return $html;
 		}
 
-		$injection = "\n" . trim( $snippet ) . "\n";
+		$injection = "\n" . Renderer::balance_raw_text_elements( trim( $snippet ) ) . "\n";
 
 		$count  = 0;
 		$result = preg_replace_callback(

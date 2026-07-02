@@ -9,7 +9,29 @@ class BlockType {
 	public function register_hooks(): void {
 		add_action( 'init', array( $this, 'register' ) );
 		add_action( 'enqueue_block_editor_assets', array( $this, 'enqueue_editor_assets' ) );
+		add_action( 'enqueue_block_assets', array( $this, 'enqueue_canvas_assets' ) );
 		add_filter( 'allowed_block_types_all', array( $this, 'restrict_block_types' ), 10, 2 );
+	}
+
+	/**
+	 * Styles the block canvas itself needs. When the editor canvas is iframed
+	 * (all blocks API v3), only styles enqueued on enqueue_block_assets are
+	 * copied into the iframe document — the CodeMirror CSS enqueued via
+	 * enqueue_block_editor_assets stays in the parent frame, leaving the code
+	 * editor unstyled inside the canvas.
+	 */
+	public function enqueue_canvas_assets(): void {
+		if ( ! is_admin() ) {
+			return;
+		}
+
+		$screen = function_exists( 'get_current_screen' ) ? get_current_screen() : null;
+		if ( ! $screen || $screen->base !== 'post' || $screen->post_type !== PostType::KEY ) {
+			return;
+		}
+
+		wp_enqueue_style( 'wp-codemirror' );
+		wp_enqueue_style( 'code-editor' );
 	}
 
 	/**

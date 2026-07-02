@@ -87,24 +87,35 @@ class Renderer {
 	 */
 	public static function get_artifact_html( \WP_Post $post, ?\WP_Post $content_source = null ): string {
 		$content_source = $content_source ?? $post;
+		$html           = '';
 
 		// File lookup always uses the canonical post ID — never the autosave's ID.
 		$file_path = ArtifactFile::get_file_path( $post->ID );
 		if ( $file_path !== null && is_readable( $file_path ) ) {
 			$content = file_get_contents( $file_path ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents -- local artifact file, not remote.
 			if ( $content !== false ) {
-				return $content;
+				$html = $content;
 			}
 		}
 
 		// For non-file-attached artifacts, extract HTML from the autosave (preview) or published content.
-		$blocks = parse_blocks( $content_source->post_content );
-		foreach ( $blocks as $block ) {
-			if ( $block['blockName'] === 'wmac/artifact' ) {
-				return $block['attrs']['html'] ?? '';
+		if ( $html === '' ) {
+			$blocks = parse_blocks( $content_source->post_content );
+			foreach ( $blocks as $block ) {
+				if ( $block['blockName'] === 'wmac/artifact' ) {
+					$html = $block['attrs']['html'] ?? '';
+					break;
+				}
 			}
 		}
-		return '';
+
+		// KSES-sanitized saves lose the doctype (KSES cannot represent it);
+		// restore standards mode for documents that clearly start at <html>.
+		if ( preg_match( '/^\s*<html\b/i', $html ) === 1 ) {
+			$html = "<!DOCTYPE html>\n" . ltrim( $html );
+		}
+
+		return $html;
 	}
 
 	private function send_headers( \WP_Post $post ): void {
@@ -305,6 +316,29 @@ class Renderer {
 
 	private function get_admin_toolbar_offset_markup(): string {
 		return '<style>html{margin-top:0!important}#wmac-admin-toolbar-offset{display:block;height:32px;min-height:32px;pointer-events:none}html{scroll-padding-top:32px}@media screen and (max-width:782px){#wmac-admin-toolbar-offset{height:46px;min-height:46px}html{scroll-padding-top:46px}}</style><div id="wmac-admin-toolbar-offset" aria-hidden="true"></div>';
+	}
+
+	/**
+	 * Appends missing </script> / </style> closers to a markup fragment.
+	 *
+	 * script and style are raw-text elements: one unclosed opener swallows
+	 * everything after it — an unclosed <script src> in a head injection
+	 * turns the entire page into script text and renders it blank. HTML5
+	 * does not honor self-closing syntax for these elements, so
+	 * <script … /> counts as unclosed too. A surplus closer appended after
+	 * a miscount (e.g. an opener inside an HTML comment) is inert.
+	 */
+	public static function balance_raw_text_elements( string $fragment ): string {
+		foreach ( array( 'script', 'style' ) as $element ) {
+			$opens  = (int) preg_match_all( '/<' . $element . '\b[^>]*>/i', $fragment );
+			$closes = (int) preg_match_all( '/<\/' . $element . '\s*>/i', $fragment );
+
+			for ( $missing = $opens - $closes; $missing > 0; $missing-- ) {
+				$fragment .= '</' . $element . '>';
+			}
+		}
+
+		return $fragment;
 	}
 
 	/**

@@ -323,14 +323,89 @@ class ArtifactFile {
 
 		$base = $upload_dir['basedir'] . DIRECTORY_SEPARATOR . 'wmac-artifacts' . DIRECTORY_SEPARATOR;
 
-		$candidates = self::candidate_names( $post_id, $ext );
-		foreach ( $candidates as $name ) {
-			if ( file_exists( $base . $name ) ) {
-				return $base . $name;
+		$extensions = self::resolve_extensions( $ext );
+		foreach ( $extensions as $candidate_ext ) {
+			$candidates = self::candidate_names( $post_id, $candidate_ext );
+			foreach ( $candidates as $name ) {
+				if ( file_exists( $base . $name ) ) {
+					return $base . $name;
+				}
 			}
 		}
 
+		// Salt rotations can orphan pre-persistence filenames ({id}-{token}.ext)
+		// when TOKEN_META was never saved. Discover and adopt those files.
+		foreach ( $extensions as $candidate_ext ) {
+			$discovered = self::discover_tokenized_path( $post_id, $candidate_ext, $base );
+			if ( $discovered !== null ) {
+				return $discovered;
+			}
+		}
+
+		$candidates = self::candidate_names( $post_id, $ext );
 		return $base . $candidates[0];
+	}
+
+	/**
+	 * HTML artifacts may be stored as either .html or .htm; treat both as the
+	 * same format for lookup and cleanup.
+	 *
+	 * @return string[]
+	 */
+	private static function resolve_extensions( string $ext ): array {
+		if ( $ext === 'html' || $ext === 'htm' ) {
+			return array( 'html', 'htm' );
+		}
+
+		return array( $ext );
+	}
+
+	/**
+	 * Finds an existing randomized filename for this post and persists its token.
+	 *
+	 * @param int    $post_id Artifact post ID.
+	 * @param string $ext     File extension (html|pdf).
+	 * @param string $base    Absolute storage directory with trailing separator.
+	 */
+	private static function discover_tokenized_path( int $post_id, string $ext, string $base ): ?string {
+		$paths = glob( $base . $post_id . '-*.' . $ext ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_glob
+		if ( ! is_array( $paths ) || empty( $paths ) ) {
+			return null;
+		}
+
+		$best_path  = null;
+		$best_mtime = -1;
+		$best_token = '';
+
+		$pattern = '/^' . preg_quote( (string) $post_id, '/' ) . '-([a-f0-9]{16})\\.' . preg_quote( $ext, '/' ) . '$/';
+
+		foreach ( $paths as $path ) {
+			$name = basename( $path );
+			if ( preg_match( $pattern, $name, $matches ) !== 1 ) {
+				continue;
+			}
+
+			$mtime = filemtime( $path ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_filemtime
+			if ( $mtime === false ) {
+				$mtime = 0;
+			}
+
+			if ( $mtime >= $best_mtime ) {
+				$best_mtime = $mtime;
+				$best_path  = $path;
+				$best_token = $matches[1];
+			}
+		}
+
+		if ( $best_path === null ) {
+			return null;
+		}
+
+		if ( $post_id > 0 && $best_token !== '' && get_post_meta( $post_id, self::TOKEN_META, true ) !== $best_token ) {
+			update_post_meta( $post_id, self::TOKEN_META, $best_token );
+		}
+
+		return $best_path;
 	}
 
 	/**
@@ -361,9 +436,23 @@ class ArtifactFile {
 
 		$base = $upload_dir['basedir'] . DIRECTORY_SEPARATOR . 'wmac-artifacts' . DIRECTORY_SEPARATOR;
 
-		foreach ( self::candidate_names( $post_id, $ext ) as $name ) {
-			if ( file_exists( $base . $name ) ) {
-				wp_delete_file( $base . $name );
+		$extensions = self::resolve_extensions( $ext );
+		foreach ( $extensions as $candidate_ext ) {
+			foreach ( self::candidate_names( $post_id, $candidate_ext ) as $name ) {
+				if ( file_exists( $base . $name ) ) {
+					wp_delete_file( $base . $name );
+				}
+			}
+		}
+
+		foreach ( $extensions as $candidate_ext ) {
+			$paths = glob( $base . $post_id . '-*.' . $candidate_ext ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_glob
+			if ( is_array( $paths ) ) {
+				foreach ( $paths as $path ) {
+					if ( preg_match( '/^' . preg_quote( (string) $post_id, '/' ) . '-[a-f0-9]{16}\\.' . preg_quote( $candidate_ext, '/' ) . '$/', basename( $path ) ) === 1 ) {
+						wp_delete_file( $path );
+					}
+				}
 			}
 		}
 	}

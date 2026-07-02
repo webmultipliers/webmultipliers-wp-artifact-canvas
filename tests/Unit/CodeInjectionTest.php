@@ -89,6 +89,40 @@ final class CodeInjectionTest extends TestCase {
 		$this->assertSame( $html, ( new CodeInjection() )->inject( $html, $this->post() ) );
 	}
 
+	public function test_unclosed_script_in_head_html_is_closed_before_injection(): void {
+		$this->with_meta( [
+			CodeInjection::HEAD_HTML => '<script src="https://cdn.tailwindcss.com">',
+		] );
+
+		$out = ( new CodeInjection() )->inject( '<html><head></head><body><h1>Hi</h1></body></html>', $this->post() );
+
+		$this->assertStringContainsString(
+			'<script src="https://cdn.tailwindcss.com"></script>',
+			$out
+		);
+	}
+
+	public function test_unclosed_style_in_body_html_is_closed_before_injection(): void {
+		$this->with_meta( [
+			CodeInjection::BODY_HTML => '<style>body{color:red}',
+		] );
+
+		$out = ( new CodeInjection() )->inject( '<html><head></head><body></body></html>', $this->post() );
+
+		$this->assertStringContainsString( '<style>body{color:red}</style>', $out );
+	}
+
+	public function test_balanced_fragments_are_injected_unchanged(): void {
+		$this->with_meta( [
+			CodeInjection::HEAD_HTML => '<script>var a=1;</script><style>p{margin:0}</style>',
+		] );
+
+		$out = ( new CodeInjection() )->inject( '<html><head></head><body></body></html>', $this->post() );
+
+		$this->assertStringContainsString( '<script>var a=1;</script><style>p{margin:0}</style>', $out );
+		$this->assertSame( 1, substr_count( $out, '</script>' ) );
+	}
+
 	public function test_sanitize_url_list_trims_validates_and_preserves_order(): void {
 		Functions\when( 'esc_url_raw' )->alias(
 			static function ( string $url ) {

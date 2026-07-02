@@ -161,7 +161,9 @@ class CodeInjection {
 
 		$head_html = trim( (string) get_post_meta( $post->ID, self::HEAD_HTML, true ) );
 		if ( $head_html !== '' ) {
-			$injection .= $head_html . "\n";
+			// An unclosed <script>/<style> in the fragment would swallow the
+			// rest of the document and blank the page.
+			$injection .= Renderer::balance_raw_text_elements( $head_html ) . "\n";
 		}
 
 		return $injection;
@@ -178,7 +180,9 @@ class CodeInjection {
 
 		$body_html = trim( (string) get_post_meta( $post->ID, self::BODY_HTML, true ) );
 		if ( $body_html !== '' ) {
-			$injection .= $body_html . "\n";
+			// See build_head_injection — unbalanced raw-text elements must not
+			// leak past the fragment.
+			$injection .= Renderer::balance_raw_text_elements( $body_html ) . "\n";
 		}
 
 		return $injection;

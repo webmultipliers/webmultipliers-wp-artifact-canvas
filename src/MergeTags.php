@@ -21,6 +21,9 @@ namespace WebMultipliers\ArtifactCanvas;
  * {{tag}} (backslash removed, no server-side substitution) so Vue/Alpine/
  * Mustache placeholders that collide with a configured tag name survive.
  *
+ * Fallback values: write {{tag_name || "fallback"}} to emit the fallback
+ * when the resolved tag value is empty.
+ *
  * Built-in tags (no map configuration required):
  *   {{wp_post_title}}         — artifact post title
  *   {{wp_post_id}}            — artifact post ID
@@ -100,44 +103,60 @@ class MergeTags {
 		}
 
 		$result = preg_replace_callback(
-			'/(\\\\?)\{\{([a-zA-Z0-9_]+)\}\}/',
+			'/(\\\\?)\{\{\s*([a-zA-Z0-9_]+)(?:\s*\|\|\s*(.+?))?\s*\}\}/',
 			function ( array $matches ) use ( $map, $post ): string {
 				// \{{tag}} escapes client-side template syntax: emit the
 				// literal placeholder (backslash removed), never substitute.
 				if ( $matches[1] !== '' ) {
-					return '{{' . $matches[2] . '}}';
+					return substr( $matches[0], 1 );
 				}
 
-				$tag    = $matches[2];
-				$config = isset( $map[ $tag ] ) && is_array( $map[ $tag ] ) ? $map[ $tag ] : null;
+				$tag           = $matches[2];
+				$fallback_expr = isset( $matches[3] ) ? $matches[3] : null;
+				$config        = isset( $map[ $tag ] ) && is_array( $map[ $tag ] ) ? $map[ $tag ] : null;
+				$fallback_type = 'text';
 
 				if ( $config !== null ) {
 					$mode = isset( $config['mode'] ) && $config['mode'] === 'dynamic' ? 'dynamic' : 'static';
 
 					if ( $mode === 'static' ) {
-						$value   = (string) ( $config['value'] ?? '' );
-						$context = (string) ( $config['context'] ?? 'text' );
+						$value         = (string) ( $config['value'] ?? '' );
+						$context       = (string) ( $config['context'] ?? 'text' );
+						$fallback_type = $context;
 
-						// Escape for the HTML context the author placed the
-						// placeholder in; esc_url additionally drops unsafe
-						// protocols (javascript: etc.).
-						switch ( $context ) {
-							case 'attr':
-								return esc_attr( $value );
-							case 'url':
-								return esc_url( $value );
-							default:
-								return esc_html( $value );
+						// Emptiness is decided on the raw value — escaping must
+						// not affect whether the fallback fires.
+						if ( ! $this->is_empty_tag_value( $value ) ) {
+							// Escape for the HTML context the author placed the
+							// placeholder in; esc_url additionally drops unsafe
+							// protocols (javascript: etc.).
+							return $this->escape_static_tag_value( $value, $context );
 						}
+
+						return $this->render_fallback_or_empty( $fallback_expr, $fallback_type );
 					}
 
 					// Dynamic: developer resolves via filter and is responsible for escaping.
-					return (string) apply_filters( 'wmac_resolve_tag_' . $tag, '', $post->ID );
+					$resolved_value = (string) apply_filters( 'wmac_resolve_tag_' . $tag, '', $post->ID );
+					if ( ! $this->is_empty_tag_value( $resolved_value ) ) {
+						return $resolved_value;
+					}
+
+					return $this->render_fallback_or_empty( $fallback_expr, 'text' );
 				}
 
 				// No map entry — try a built-in or developer-registered default resolver.
 				if ( has_filter( 'wmac_resolve_tag_' . $tag ) ) {
-					return (string) apply_filters( 'wmac_resolve_tag_' . $tag, '', $post->ID );
+					$resolved_value = (string) apply_filters( 'wmac_resolve_tag_' . $tag, '', $post->ID );
+					if ( ! $this->is_empty_tag_value( $resolved_value ) ) {
+						return $resolved_value;
+					}
+
+					return $this->render_fallback_or_empty( $fallback_expr, 'text' );
+				}
+
+				if ( $fallback_expr !== null ) {
+					return $this->render_fallback_or_empty( $fallback_expr, 'text' );
 				}
 
 				return $matches[0];
@@ -146,6 +165,59 @@ class MergeTags {
 		);
 
 		return $result ?? $html;
+	}
+
+	private function escape_static_tag_value( string $value, string $context ): string {
+		switch ( $context ) {
+			case 'attr':
+				return esc_attr( $value );
+			case 'url':
+				return esc_url( $value );
+			default:
+				return esc_html( $value );
+		}
+	}
+
+	private function is_empty_tag_value( string $value ): bool {
+		return trim( $value ) === '';
+	}
+
+	private function render_fallback_or_empty( ?string $fallback_expr, string $context ): string {
+		if ( $fallback_expr === null ) {
+			return '';
+		}
+
+		$fallback = $this->parse_fallback_expression( $fallback_expr );
+
+		switch ( $context ) {
+			case 'attr':
+				return esc_attr( $fallback );
+			case 'url':
+				return esc_url( $fallback );
+			default:
+				return esc_html( $fallback );
+		}
+	}
+
+	private function parse_fallback_expression( string $expression ): string {
+		$trimmed = trim( $expression );
+
+		if ( strlen( $trimmed ) >= 2 ) {
+			$first = $trimmed[0];
+			$last  = $trimmed[ strlen( $trimmed ) - 1 ];
+
+			if ( $first === '"' && $last === '"' ) {
+				$inner = substr( $trimmed, 1, -1 );
+				return str_replace( array( '\\\\', '\\"' ), array( '\\', '"' ), $inner );
+			}
+
+			if ( $first === "'" && $last === "'" ) {
+				$inner = substr( $trimmed, 1, -1 );
+				return str_replace( array( '\\\\', "\\'" ), array( '\\', "'" ), $inner );
+			}
+		}
+
+		return $trimmed;
 	}
 
 	// -------------------------------------------------------------------------
