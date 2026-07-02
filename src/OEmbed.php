@@ -7,7 +7,7 @@ namespace WebMultipliers\ArtifactCanvas;
 class OEmbed {
 
 	public function register_hooks(): void {
-		add_filter( 'oembed_response_data', [ $this, 'filter_response_data' ], 10, 4 );
+		add_filter( 'oembed_response_data', array( $this, 'filter_response_data' ), 10, 4 );
 	}
 
 	/**

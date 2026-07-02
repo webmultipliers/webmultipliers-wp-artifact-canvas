@@ -18,7 +18,7 @@ namespace WebMultipliers\ArtifactCanvas;
 class SeoMeta {
 
 	public function register_hooks(): void {
-		add_filter( 'wmac_rendered_html', [ $this, 'maybe_inject_meta' ], 20, 2 );
+		add_filter( 'wmac_rendered_html', array( $this, 'maybe_inject_meta' ), 20, 2 );
 	}
 
 	public function maybe_inject_meta( string $html, \WP_Post $post ): string {

@@ -14,18 +14,19 @@ namespace WebMultipliers\ArtifactCanvas;
  *   seo_enabled_default   bool   (false)  — inject SEO meta by default
  *   csp_default           string ('')     — global CSP header value
  *   toolbar_mode          string ('custom') — 'none' | 'custom' | 'core'
+ *   sandbox_host          string ('')     — host[:port] artifacts are served from ('' = same-origin)
  */
 class Settings {
 
 	public const OPTION_KEY = 'wmac_settings';
 
 	public function register_hooks(): void {
-		add_action( 'admin_menu', [ $this, 'add_menu' ] );
-		add_action( 'admin_init', [ $this, 'register_settings' ] );
-		add_filter( 'wmac_noindex', [ $this, 'filter_noindex_default' ], 5, 2 );
-		add_filter( 'wmac_seo_enabled', [ $this, 'filter_seo_enabled_default' ], 5, 2 );
-		add_filter( 'wmac_csp', [ $this, 'filter_csp_default' ], 5, 2 );
-		add_filter( 'wmac_artifact_admin_toolbar_mode', [ $this, 'filter_toolbar_mode_default' ], 5, 2 );
+		add_action( 'admin_menu', array( $this, 'add_menu' ) );
+		add_action( 'admin_init', array( $this, 'register_settings' ) );
+		add_filter( 'wmac_noindex', array( $this, 'filter_noindex_default' ), 5, 2 );
+		add_filter( 'wmac_seo_enabled', array( $this, 'filter_seo_enabled_default' ), 5, 2 );
+		add_filter( 'wmac_csp', array( $this, 'filter_csp_default' ), 5, 2 );
+		add_filter( 'wmac_artifact_admin_toolbar_mode', array( $this, 'filter_toolbar_mode_default' ), 5, 2 );
 	}
 
 	public function add_menu(): void {
@@ -35,7 +36,7 @@ class Settings {
 			__( 'Settings', 'webmultipliers-wp-artifact-canvas' ),
 			'manage_options',
 			'wmac-settings',
-			[ $this, 'render_page' ]
+			array( $this, 'render_page' )
 		);
 	}
 
@@ -43,27 +44,32 @@ class Settings {
 		register_setting(
 			'wmac_settings_group',
 			self::OPTION_KEY,
-			[
-				'sanitize_callback' => [ $this, 'sanitize_options' ],
+			array(
+				'sanitize_callback' => array( $this, 'sanitize_options' ),
 				'default'           => $this->defaults(),
-			]
+			)
 		);
 	}
 
+	/**
+	 * @param mixed $raw Raw option value from the settings form.
+	 * @return array<string, bool|string>
+	 */
 	public function sanitize_options( $raw ): array {
 		if ( ! is_array( $raw ) ) {
-			$raw = [];
+			$raw = array();
 		}
 		$defaults = $this->defaults();
 
-		return [
+		return array(
 			'noindex_default'     => ! empty( $raw['noindex_default'] ),
 			'seo_enabled_default' => ! empty( $raw['seo_enabled_default'] ),
-			'csp_default'         => str_replace( [ "\r", "\n" ], '', sanitize_text_field( $raw['csp_default'] ?? '' ) ),
-			'toolbar_mode'        => in_array( $raw['toolbar_mode'] ?? '', [ 'none', 'custom', 'core' ], true )
+			'csp_default'         => str_replace( array( "\r", "\n" ), '', sanitize_text_field( $raw['csp_default'] ?? '' ) ),
+			'toolbar_mode'        => in_array( $raw['toolbar_mode'] ?? '', array( 'none', 'custom', 'core' ), true )
 				? $raw['toolbar_mode']
 				: $defaults['toolbar_mode'],
-		];
+			'sandbox_host'        => Sandbox::normalize_host( (string) ( $raw['sandbox_host'] ?? '' ) ),
+		);
 	}
 
 	public function render_page(): void {
@@ -138,6 +144,26 @@ class Settings {
 					</tr>
 					<tr>
 						<th scope="row">
+							<label for="wmac_sandbox_host">
+								<?php esc_html_e( 'Sandbox host', 'webmultipliers-wp-artifact-canvas' ); ?>
+							</label>
+						</th>
+						<td>
+							<input
+								type="text"
+								id="wmac_sandbox_host"
+								name="<?php echo esc_attr( self::OPTION_KEY ); ?>[sandbox_host]"
+								value="<?php echo esc_attr( $opts['sandbox_host'] ); ?>"
+								class="regular-text"
+								placeholder="artifacts.example.com"
+							>
+							<p class="description">
+								<?php esc_html_e( 'Serve published artifacts from this isolated host instead of the main site origin. The host must point at this WordPress install. A separate registrable domain gives full cookie isolation; a subdomain is safe only when COOKIE_DOMAIN is unset (host-only cookies). Leave blank to serve artifacts same-origin.', 'webmultipliers-wp-artifact-canvas' ); ?>
+							</p>
+						</td>
+					</tr>
+					<tr>
+						<th scope="row">
 							<label for="wmac_toolbar_mode">
 								<?php esc_html_e( 'Admin toolbar', 'webmultipliers-wp-artifact-canvas' ); ?>
 							</label>
@@ -192,17 +218,20 @@ class Settings {
 
 	// --- Helpers ---
 
+	/** @return array<string, bool|string> */
 	public static function get(): array {
-		$saved = get_option( self::OPTION_KEY, [] );
-		return array_merge( ( new self() )->defaults(), is_array( $saved ) ? $saved : [] );
+		$saved = get_option( self::OPTION_KEY, array() );
+		return array_merge( ( new self() )->defaults(), is_array( $saved ) ? $saved : array() );
 	}
 
+	/** @return array<string, bool|string> */
 	private function defaults(): array {
-		return [
+		return array(
 			'noindex_default'     => true,
 			'seo_enabled_default' => false,
 			'csp_default'         => '',
 			'toolbar_mode'        => 'custom',
-		];
+			'sandbox_host'        => '',
+		);
 	}
 }

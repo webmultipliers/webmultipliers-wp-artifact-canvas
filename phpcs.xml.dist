@@ -1,0 +1,49 @@
+<?xml version="1.0"?>
+<ruleset name="WP Artifact Canvas">
+    <description>Coding standard for WP Artifact Canvas.</description>
+
+    <file>src</file>
+    <file>webmultipliers-wp-artifact-canvas.php</file>
+    <file>uninstall.php</file>
+
+    <arg value="sp"/>
+    <arg name="basepath" value="."/>
+    <arg name="colors"/>
+    <arg name="extensions" value="php"/>
+    <arg name="parallel" value="8"/>
+
+    <config name="testVersion" value="8.1-"/>
+    <rule ref="PHPCompatibilityWP"/>
+
+    <rule ref="WordPress-Extra">
+        <!-- PSR-4 class files (src/Renderer.php), not class-renderer.php. -->
+        <exclude name="WordPress.Files.FileName"/>
+        <!-- The codebase deliberately reads left-to-right ($x === ''). -->
+        <exclude name="WordPress.PHP.YodaConditions"/>
+        <!-- get_option(...) ?: 'fallback' is used intentionally throughout. -->
+        <exclude name="Universal.Operators.DisallowShortTernary"/>
+        <!-- Filter callbacks receive ($default, $post_id) — documented public API. -->
+        <exclude name="Universal.NamingConventions.NoReservedKeywordParameterNames"/>
+        <!-- Hook callbacks must accept positional params they don't use. -->
+        <exclude name="Generic.CodeAnalysis.UnusedFunctionParameter"/>
+    </rule>
+    <rule ref="WordPress.WP.I18n">
+        <properties>
+            <property name="text_domain" type="array">
+                <element value="webmultipliers-wp-artifact-canvas"/>
+            </property>
+        </properties>
+    </rule>
+
+    <rule ref="WordPress.NamingConventions.PrefixAllGlobals">
+        <properties>
+            <property name="prefixes" type="array">
+                <element value="wmac"/>
+                <element value="WMAC"/>
+                <element value="WebMultipliers\ArtifactCanvas"/>
+            </property>
+        </properties>
+    </rule>
+
+    <config name="minimum_supported_wp_version" value="6.4"/>
+</ruleset>

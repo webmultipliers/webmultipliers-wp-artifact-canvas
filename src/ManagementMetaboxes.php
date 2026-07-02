@@ -23,15 +23,15 @@ namespace WebMultipliers\ArtifactCanvas;
 class ManagementMetaboxes {
 
 	public function register_hooks(): void {
-		add_action( 'add_meta_boxes_' . PostType::KEY, [ $this, 'register_metaboxes' ] );
-		add_action( 'enqueue_block_editor_assets',     [ $this, 'enqueue_assets' ] );
+		add_action( 'add_meta_boxes_' . PostType::KEY, array( $this, 'register_metaboxes' ) );
+		add_action( 'enqueue_block_editor_assets', array( $this, 'enqueue_assets' ) );
 	}
 
 	public function register_metaboxes(): void {
 		add_meta_box(
 			'wmac-settings',
 			__( 'Artifact Settings', 'webmultipliers-wp-artifact-canvas' ),
-			[ $this, 'render_settings' ],
+			array( $this, 'render_settings' ),
 			PostType::KEY,
 			'normal',
 			'high'
@@ -39,7 +39,7 @@ class ManagementMetaboxes {
 		add_meta_box(
 			'wmac-governance',
 			__( 'Link Governance', 'webmultipliers-wp-artifact-canvas' ),
-			[ $this, 'render_governance' ],
+			array( $this, 'render_governance' ),
 			PostType::KEY,
 			'normal',
 			'high'
@@ -47,7 +47,7 @@ class ManagementMetaboxes {
 		add_meta_box(
 			'wmac-tracking',
 			__( 'Tracking & Webhooks', 'webmultipliers-wp-artifact-canvas' ),
-			[ $this, 'render_tracking' ],
+			array( $this, 'render_tracking' ),
 			PostType::KEY,
 			'normal',
 			'high'
@@ -55,7 +55,7 @@ class ManagementMetaboxes {
 		add_meta_box(
 			'wmac-merge-tags',
 			__( 'Merge Tags', 'webmultipliers-wp-artifact-canvas' ),
-			[ $this, 'render_merge_tags' ],
+			array( $this, 'render_merge_tags' ),
 			PostType::KEY,
 			'normal',
 			'high'
@@ -63,7 +63,7 @@ class ManagementMetaboxes {
 		add_meta_box(
 			'wmac-asset-mapping',
 			__( 'Asset Mapping', 'webmultipliers-wp-artifact-canvas' ),
-			[ $this, 'render_asset_mapping' ],
+			array( $this, 'render_asset_mapping' ),
 			PostType::KEY,
 			'normal',
 			'high'
@@ -79,14 +79,14 @@ class ManagementMetaboxes {
 		wp_enqueue_style(
 			'wmac-management-metaboxes',
 			WMAC_URL . 'blocks/artifact/management-metaboxes.css',
-			[],
+			array(),
 			WMAC_VERSION
 		);
 
 		wp_enqueue_script(
 			'wmac-management-metaboxes',
 			WMAC_URL . 'blocks/artifact/management-metaboxes.js',
-			[ 'wp-api-fetch', 'wp-i18n', 'wp-dom-ready' ],
+			array( 'wp-api-fetch', 'wp-i18n', 'wp-dom-ready' ),
 			WMAC_VERSION,
 			true
 		);
@@ -109,19 +109,19 @@ class ManagementMetaboxes {
 	private function get_artifact_block( \WP_Post $post ): array {
 		foreach ( parse_blocks( $post->post_content ) as $block ) {
 			if ( ( $block['blockName'] ?? '' ) === 'wmac/artifact' ) {
-				return [
+				return array(
 					(string) ( $block['attrs']['html'] ?? '' ),
 					! empty( $block['attrs']['fileStored'] ),
-				];
+				);
 			}
 		}
-		return [ '', false ];
+		return array( '', false );
 	}
 
 	/** @return string[] */
 	private function detect_merge_tags( string $html ): array {
 		if ( $html === '' ) {
-			return [];
+			return array();
 		}
 		preg_match_all( '/\{\{([a-zA-Z0-9_]+)\}\}/', $html, $matches );
 		return array_values( array_unique( $matches[1] ) );
@@ -130,12 +130,12 @@ class ManagementMetaboxes {
 	/** @return string[] */
 	private function detect_asset_paths( string $html ): array {
 		if ( $html === '' ) {
-			return [];
+			return array();
 		}
 		preg_match_all( '/(?:src|href)\s*=\s*["\']([^"\']+)["\']/i', $html, $matches );
-		$found = [];
+		$found = array();
 		foreach ( $matches[1] as $path ) {
-			if ( preg_match( '#^(?:https?://|//|data:|#|mailto:|tel:)#i', $path ) || str_starts_with( $path, '/' ) ) {
+			if ( preg_match( '~^(?:https?://|//|data:|#|mailto:|tel:)~i', $path ) || str_starts_with( $path, '/' ) ) {
 				continue;
 			}
 			$found[ $path ] = true;
@@ -208,11 +208,11 @@ class ManagementMetaboxes {
 	// -----------------------------------------------------------------
 
 	public function render_settings( \WP_Post $post ): void {
-		$alias   = (string) get_post_meta( $post->ID, ArtifactAlias::META_KEY, true );
-		$noindex = (string) get_post_meta( $post->ID, ArtifactMeta::NOINDEX, true );
-		$seo     = (string) get_post_meta( $post->ID, ArtifactMeta::SEO_ENABLED, true );
-		$csp     = (string) get_post_meta( $post->ID, ArtifactMeta::CSP, true );
-		$prompt  = (string) get_post_meta( $post->ID, ArtifactMeta::PROMPT, true );
+		$alias    = (string) get_post_meta( $post->ID, ArtifactAlias::META_KEY, true );
+		$noindex  = (string) get_post_meta( $post->ID, ArtifactMeta::NOINDEX, true );
+		$seo      = (string) get_post_meta( $post->ID, ArtifactMeta::SEO_ENABLED, true );
+		$csp      = (string) get_post_meta( $post->ID, ArtifactMeta::CSP, true );
+		$prompt   = (string) get_post_meta( $post->ID, ArtifactMeta::PROMPT, true );
 		$site_url = untrailingslashit( (string) get_bloginfo( 'url' ) );
 
 		echo '<div class="wmac-metabox">';
@@ -303,8 +303,8 @@ class ManagementMetaboxes {
 	// -----------------------------------------------------------------
 
 	public function render_tracking( \WP_Post $post ): void {
-		$snippet        = (string) get_post_meta( $post->ID, ClientTracking::META_KEY, true );
-		$webhook_url    = (string) get_post_meta( $post->ID, ViewWebhook::META_KEY, true );
+		$snippet          = (string) get_post_meta( $post->ID, ClientTracking::META_KEY, true );
+		$webhook_url      = (string) get_post_meta( $post->ID, ViewWebhook::META_KEY, true );
 		$can_save_snippet = current_user_can( 'unfiltered_html' );
 
 		echo '<div class="wmac-metabox">';
@@ -346,7 +346,7 @@ class ManagementMetaboxes {
 
 		$tag_map_json = (string) get_post_meta( $post->ID, ArtifactMeta::TAG_MAP, true );
 		$tag_map      = json_decode( $tag_map_json ?: '{}', true );
-		$tag_map      = is_array( $tag_map ) ? $tag_map : [];
+		$tag_map      = is_array( $tag_map ) ? $tag_map : array();
 
 		$detected = $this->detect_merge_tags( $html );
 		$all_tags = array_values( array_unique( array_merge( $detected, array_keys( $tag_map ) ) ) );
@@ -377,7 +377,14 @@ class ManagementMetaboxes {
 			. '</tr></thead><tbody>';
 
 		foreach ( $all_tags as $tag ) {
-			$this->render_tag_row( $tag, in_array( $tag, $detected, true ), is_array( $tag_map[ $tag ] ?? null ) ? $tag_map[ $tag ] : [ 'mode' => 'static', 'value' => '' ] );
+			$this->render_tag_row(
+				$tag,
+				in_array( $tag, $detected, true ),
+				is_array( $tag_map[ $tag ] ?? null ) ? $tag_map[ $tag ] : array(
+					'mode'  => 'static',
+					'value' => '',
+				)
+			);
 		}
 
 		echo '</tbody></table>';
@@ -394,7 +401,14 @@ class ManagementMetaboxes {
 
 		// Hidden row template used by JS when adding a new tag.
 		echo '<template id="wmac-tag-row-template">';
-		$this->render_tag_row( '__TAG__', false, [ 'mode' => 'static', 'value' => '' ] );
+		$this->render_tag_row(
+			'__TAG__',
+			false,
+			array(
+				'mode'  => 'static',
+				'value' => '',
+			)
+		);
 		echo '</template>';
 	}
 
@@ -441,7 +455,7 @@ class ManagementMetaboxes {
 
 		$asset_map_json = (string) get_post_meta( $post->ID, ArtifactMeta::ASSET_MAP, true );
 		$asset_map      = json_decode( $asset_map_json ?: '{}', true );
-		$asset_map      = is_array( $asset_map ) ? $asset_map : [];
+		$asset_map      = is_array( $asset_map ) ? $asset_map : array();
 
 		$detected  = $this->detect_asset_paths( $html );
 		$all_paths = array_values( array_unique( array_merge( $detected, array_keys( $asset_map ) ) ) );

@@ -9,39 +9,41 @@ class Plugin {
 	private static ?self $instance = null;
 
 	// Core
-	private PostType      $post_type;
-	private BlockType     $block_type;
-	private Renderer      $renderer;
-	private Security      $security;
-	private OEmbed        $oembed;
-	private Revisions     $revisions;
-	private SeoMeta       $seo_meta;
-	private ArtifactFile  $artifact_file;
-	private AdminColumns  $admin_columns;
-	private Ingestion     $ingestion;
-	private ArtifactMeta  $artifact_meta;
+	private Capabilities $capabilities;
+	private PostType $post_type;
+	private BlockType $block_type;
+	private Renderer $renderer;
+	private Security $security;
+	private OEmbed $oembed;
+	private Revisions $revisions;
+	private SeoMeta $seo_meta;
+	private ArtifactFile $artifact_file;
+	private AdminColumns $admin_columns;
+	private Ingestion $ingestion;
+	private ArtifactMeta $artifact_meta;
 	private ArtifactAlias $artifact_alias;
-	private Settings      $settings;
-	private AssetMapper          $asset_mapper;
-	private MergeTags            $merge_tags;
-	private ManagementMetaboxes  $management_metaboxes;
+	private Settings $settings;
+	private Sandbox $sandbox;
+	private AssetMapper $asset_mapper;
+	private MergeTags $merge_tags;
+	private ManagementMetaboxes $management_metaboxes;
 
 	// Phase A — DAM foundation
-	private ClientTaxonomy  $client_taxonomy;
+	private ClientTaxonomy $client_taxonomy;
 	private LifecycleStatus $lifecycle_status;
-	private OwnershipMeta   $ownership_meta;
+	private OwnershipMeta $ownership_meta;
 
 	// Phase B — Client engagement
 	private LinkGovernance $link_governance;
 	private ClientTracking $client_tracking;
-	private ViewWebhook    $view_webhook;
+	private ViewWebhook $view_webhook;
 
 	// Phase C — Landing page engine
 	private PageUsurpation $page_usurpation;
 
-	// Phase D — Git-driven ingestion
-	private GitWebhook       $git_webhook;
-	private PackageValidator $package_validator; // stateless; instantiated by GitWebhook
+	// Phase D — Git-driven ingestion (PackageValidator is stateless and
+	// instantiated by GitWebhook directly).
+	private GitWebhook $git_webhook;
 
 	// Phase E — Multi-format engine
 	private PdfRenderer $pdf_renderer;
@@ -57,23 +59,26 @@ class Plugin {
 
 	public function init(): void {
 		// --- Core ---
-		$this->post_type      = new PostType();
-		$this->block_type     = new BlockType();
-		$this->renderer       = new Renderer();
-		$this->security       = new Security();
-		$this->oembed         = new OEmbed();
-		$this->revisions      = new Revisions();
-		$this->seo_meta       = new SeoMeta();
-		$this->artifact_file  = new ArtifactFile();
-		$this->admin_columns  = new AdminColumns();
-		$this->ingestion      = new Ingestion();
-		$this->artifact_meta  = new ArtifactMeta();
-		$this->artifact_alias = new ArtifactAlias();
-		$this->settings       = new Settings();
-		$this->asset_mapper          = new AssetMapper();
-		$this->merge_tags            = new MergeTags();
-		$this->management_metaboxes  = new ManagementMetaboxes();
+		$this->capabilities         = new Capabilities();
+		$this->post_type            = new PostType();
+		$this->block_type           = new BlockType();
+		$this->renderer             = new Renderer();
+		$this->security             = new Security();
+		$this->oembed               = new OEmbed();
+		$this->revisions            = new Revisions();
+		$this->seo_meta             = new SeoMeta();
+		$this->artifact_file        = new ArtifactFile();
+		$this->admin_columns        = new AdminColumns();
+		$this->ingestion            = new Ingestion();
+		$this->artifact_meta        = new ArtifactMeta();
+		$this->artifact_alias       = new ArtifactAlias();
+		$this->settings             = new Settings();
+		$this->sandbox              = new Sandbox();
+		$this->asset_mapper         = new AssetMapper();
+		$this->merge_tags           = new MergeTags();
+		$this->management_metaboxes = new ManagementMetaboxes();
 
+		$this->capabilities->register_hooks();
 		$this->post_type->register_hooks();
 		$this->block_type->register_hooks();
 		$this->renderer->register_hooks();
@@ -87,6 +92,7 @@ class Plugin {
 		$this->artifact_meta->register_hooks();
 		$this->artifact_alias->register_hooks();
 		$this->settings->register_hooks();
+		$this->sandbox->register_hooks();
 		$this->asset_mapper->register_hooks();
 		$this->merge_tags->register_hooks();
 		$this->management_metaboxes->register_hooks();

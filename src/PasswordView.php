@@ -24,7 +24,7 @@ class PasswordView {
 			$logo_block = '<div class="logo">' . $logo_html . '</div>';
 		}
 
-		// phpcs:disable WordPress.Security.EscapeOutput.OutputNotEscaped
+		// phpcs:disable WordPress.Security.EscapeOutput -- all variables in this template are pre-escaped above.
 		echo <<<HTML
 		<!doctype html>
 		<html lang="{$lang}">

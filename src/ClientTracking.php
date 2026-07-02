@@ -22,24 +22,28 @@ class ClientTracking {
 	const META_KEY = '_wmac_tracking_snippet';
 
 	public function register_hooks(): void {
-		add_action( 'init', [ $this, 'register_meta' ] );
-		add_filter( 'wmac_rendered_html', [ $this, 'inject_snippet' ], 30, 2 );
+		add_action( 'init', array( $this, 'register_meta' ) );
+		add_filter( 'wmac_rendered_html', array( $this, 'inject_snippet' ), 30, 2 );
 	}
 
 	public function register_meta(): void {
-		register_post_meta( PostType::KEY, self::META_KEY, [
-			'type'              => 'string',
-			'description'       => 'Analytics / tracking snippet injected into the artifact <head> before serving.',
-			'single'            => true,
-			'show_in_rest'      => true,
-			'sanitize_callback' => static function ( $v ): string {
-				// Strip PHP open tags only — <script> tags are intentional here.
-				return (string) preg_replace( '/<\?(?:php|=)?/i', '', (string) $v );
-			},
-			'auth_callback' => static function ( bool $allowed, string $meta_key, int $post_id ): bool {
-				return current_user_can( 'unfiltered_html' );
-			},
-		] );
+		register_post_meta(
+			PostType::KEY,
+			self::META_KEY,
+			array(
+				'type'              => 'string',
+				'description'       => 'Analytics / tracking snippet injected into the artifact <head> before serving.',
+				'single'            => true,
+				'show_in_rest'      => true,
+				'sanitize_callback' => static function ( $v ): string {
+					// Strip PHP open tags only — <script> tags are intentional here.
+					return (string) preg_replace( '/<\?(?:php|=)?/i', '', (string) $v );
+				},
+				'auth_callback'     => static function ( bool $allowed, string $meta_key, int $post_id ): bool {
+					return current_user_can( 'unfiltered_html' );
+				},
+			)
+		);
 	}
 
 	public function inject_snippet( string $html, \WP_Post $post ): string {

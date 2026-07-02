@@ -3,7 +3,7 @@
 > Host fully-rendered HTML artifacts on WordPress — paste a complete HTML document into a post and serve it 1:1 on the front end, with zero theme interference and full respect for WordPress access rules.
 
 **Package slug:** `webmultipliers-wp-artifact-canvas`
-**Status:** Active development
+**Status:** Stable — 1.0
 **Author:** Web Multipliers
 
 ---
@@ -159,9 +159,11 @@ All custom routes are under `/wp-json/wmac/v1`.
 
 Notes:
 
-- Artifact creation and file management endpoints require an authenticated editor for that artifact type.
+- Artifact creation and file management endpoints require an authenticated user holding the relevant `wm_artifact` capability (see [Security model](#security-model)).
+- **Authentication:** in-browser calls must send a REST nonce via the `X-WP-Nonce` header (this is what the editor metaboxes do via `wp.apiFetch`). Server-to-server automation should use [Application Passwords](https://make.wordpress.org/core/2020/11/05/application-passwords-integration-guide/) over HTTPS — all `/wmac/v1/*` routes work with Basic auth via an application password.
 - The Git webhook endpoint authenticates via HMAC signature (GitHub: `X-Hub-Signature-256`, GitLab: `X-Gitlab-Token`) rather than cookie auth.
-- Custom CI tools can bypass the Git provider entirely: `POST` a JSON body with `{ "wmac_archive_url": "https://…/build.zip" }` to the same endpoint, secured by your own `Authorization` header or signed URL.
+- Custom CI tools can bypass the Git provider entirely: `POST` a JSON body with `{ "wmac_archive_url": "https://…/build.zip" }` to the same endpoint. **The archive host must be allowlisted first** via the `wmac_git_archive_hosts` filter (SSRF protection; only `api.github.com`, `codeload.github.com`, and `gitlab.com` are allowed by default).
+- **Stability:** the REST routes, action/filter names, and their signatures documented here are considered stable as of 1.0 and follow semver — breaking changes only in a 2.0.
 
 ## Global settings
 
@@ -173,6 +175,7 @@ Global defaults currently include:
 - default SEO meta injection
 - default CSP header value
 - admin toolbar mode (`none`, `custom`, `core`)
+- sandbox host (see [Sandbox origin isolation](#sandbox-origin-isolation))
 
 ## How it works
 
@@ -192,6 +195,31 @@ Any standard WordPress Page can be configured to serve a published artifact at t
 
 To configure: open the Page in the editor. A metabox labeled **Artifact Usurpation** appears in the sidebar. Select a published artifact from the dropdown and save the page. The artifact's full render pipeline (password gate, governance, `wmac_rendered_html` filters) applies to the usurped URL.
 
+A usurped page serves artifact JavaScript at a **main-site URL by design**, so sandbox origin isolation cannot apply to it. Compensating restrictions:
+
+- Configuring usurpation requires the `unfiltered_html` capability (both the metabox and the REST meta write).
+- At serve time, the artifact's author must also hold `unfiltered_html` — artifacts authored by untrusted users are never usurped.
+- A strict `Content-Security-Policy` is sent by default (`connect-src 'none'` blocks all fetch/XHR from the page, including authenticated same-origin REST calls). Relax or remove it with the `wmac_usurpation_csp` filter.
+
+## Sandbox origin isolation
+
+Because an artifact is arbitrary HTML+JS, serving it from your main origin means its scripts run with same-origin access to your site (cookies scoped to that host, authenticated REST when a logged-in admin views it). For a single trusted author that can be acceptable; for anything broader, serve artifacts from an isolated origin.
+
+Point a second hostname at the same WordPress install (same DocumentRoot / same server block), then set it under **Artifacts → Settings → Sandbox host** (or via the `wmac_sandbox_host` filter from a plugin). Two topologies:
+
+| Topology | Isolation | Notes |
+| --- | --- | --- |
+| Separate registrable domain (`example-artifacts.com`) | Full cookie isolation, always | Strongest; recommended for multi-author or client-facing installs |
+| Subdomain (`artifacts.example.com`) | Isolated **only** with host-only cookies | Safe with the WP default (`COOKIE_DOMAIN` unset). Never combine with a wildcard `COOKIE_DOMAIN` like `.example.com` |
+
+When a sandbox host is configured:
+
+- Published artifact permalinks (and oEmbed iframes) point at the sandbox host; a public artifact request on the main origin 301s there. Editor previews stay on the main origin.
+- On the sandbox host, **authentication is ignored entirely** (`determine_current_user` is forced to `0`), non-artifact front-end requests return 404, REST is limited to the artifact PDF stream and oEmbed routes, and `wp-login.php` serves only the post-password action so password-protected artifacts keep working.
+- Baseline isolation headers (`Referrer-Policy: no-referrer`) are added; the per-artifact CSP override still applies on top.
+
+Leave the setting blank to keep the pre-1.0 same-origin behavior.
+
 ## Filter reference
 
 | Filter | Default | Description |
@@ -209,6 +237,9 @@ To configure: open the Page in the editor. A metabox labeled **Artifact Usurpati
 | `wmac_view_webhook_sslverify` | `true` | Control TLS verification for outbound view webhooks. |
 | `wmac_git_webhook_token` | `''` | Bearer token for private Git archive downloads. |
 | `wmac_git_webhook_allow_unsigned` | `false` | Allow unsigned Git webhook requests (development only). |
+| `wmac_git_archive_hosts` | GitHub/GitLab hosts | Allowlist of hosts the server may download webhook archives from. Add self-hosted GitLab or CI stores here. |
+| `wmac_sandbox_host` | `''` | Override/set the sandbox host in code. Must be added from a plugin (runs at `plugins_loaded`). |
+| `wmac_usurpation_csp` | strict policy | CSP sent on usurped Page responses. Return `''` to suppress. |
 | `wmac_max_zip_size` | `52428800` | Max uncompressed ZIP size for Git ingestion package validation (50 MB). |
 | `wmac_max_zip_depth` | `5` | Max directory nesting depth allowed in Git ingestion ZIPs. |
 | `wmac_pdfjs_url` | CDN URL | Override PDF.js module URL used by PDF viewer mode. |
@@ -219,12 +250,19 @@ To configure: open the Page in the editor. A metabox labeled **Artifact Usurpati
 
 This is a **trusted-author tool**. Hosting arbitrary HTML, CSS, and JavaScript is the entire point, and arbitrary JavaScript served from your own domain is powerful by definition.
 
-- Artifact editing and publishing is gated to trusted users with `unfiltered_html` for this post type (single-site admins; multisite super admins by default).
-- If you customize capabilities to allow less-trusted users, save-time sanitization still applies to block HTML via `wp_kses_post`.
-- Because a canvas is served same-origin, its JavaScript can reach same-origin cookies, storage, and endpoints. With a single trusted admin this is fine. If you ever open authoring to multiple or less-trusted users, treat isolated serving (a sandboxed iframe or a separate origin) as a hard requirement, not an option.
+- **Dedicated capabilities.** Artifact editing and publishing is gated by a dedicated capability set (`edit_wm_artifacts`, `publish_wm_artifacts`, …) generated via `capability_type = wm_artifact` with `map_meta_cap`. Administrators receive the full set on activation. Grant individual capabilities to other roles with any role editor or WP-CLI to delegate authoring.
+- **Capability ≠ trust for raw HTML.** Holding artifact capabilities does not imply `unfiltered_html`. Authors without `unfiltered_html` have their artifact HTML filtered through `wp_kses_post` on save — `<script>` tags and event handlers are stripped, same as core.
+- **Origin isolation.** Because a canvas served same-origin can reach same-origin cookies, storage, and endpoints, configure the [sandbox host](#sandbox-origin-isolation) whenever more than one fully-trusted admin authors artifacts.
 - Static merge tag values are sanitized server-side (`sanitize_text_field`) on save and escaped with `esc_html` at render time. Dynamic merge tag values are the developer's responsibility — filter callbacks must return properly escaped strings for their HTML context.
 - Asset map URLs are sanitized with `esc_url_raw` on save and `esc_url` at render time.
 - The analytics snippet field requires `unfiltered_html` capability to save. Non-admin users see a warning and cannot write to that field.
+- **Stored files are unguessable and blocked.** Server-attached HTML/PDF files use randomized names (`{id}-{hmac}.html`, keyed with the site salt) inside `uploads/wmac-artifacts/`, which ships an Apache `.htaccess` denying direct access. On Nginx, add the rule below; an admin health check probes the directory over HTTP and shows an error notice (with the rule) if it is publicly reachable:
+
+  ```nginx
+  location ^~ /wp-content/uploads/wmac-artifacts/ { deny all; }
+  ```
+
+- **Webhook fetches are allowlisted.** The Git webhook only downloads archives over HTTPS from `api.github.com`, `codeload.github.com`, or `gitlab.com` unless you extend `wmac_git_archive_hosts` — the `wmac_archive_url` payload branch is inert until you allowlist your CI's host.
 
 ## Technical configuration
 
@@ -241,6 +279,23 @@ This is a **trusted-author tool**. Hosting arbitrary HTML, CSS, and JavaScript i
 | Tag map meta key | `_wmac_tag_map` |
 | Alias meta key | `_wmac_alias` |
 | Git webhook secret option | `wmac_git_webhook_secret` |
+| Capability type | `wm_artifact` / `wm_artifacts` (`map_meta_cap`) |
+| Settings option key | `wmac_settings` |
+
+## Development
+
+```bash
+composer install       # dev dependencies (phpcs/wpcs, phpstan, phpunit + brain/monkey)
+composer lint          # PHPCS (WordPress-Extra)
+composer lint:fix      # PHPCBF auto-fix
+composer analyse       # PHPStan level 6 over src/
+composer test          # PHPUnit unit suite (no WordPress install required)
+composer build         # build the distributable ZIP (bin/build-zip.sh)
+```
+
+A [`.wp-env.json`](.wp-env.json) is included — run `npx @wordpress/env start` for a disposable WordPress with the plugin active at `http://localhost:8888` (admin/password).
+
+CI: every push and PR runs lint + analyse + test on PHP 8.1/8.2/8.3 (`qa.yml`). Pushing a `v*` tag that matches the plugin header version builds and attaches the installable ZIP to a GitHub release (`release.yml`).
 
 ## Known limitations
 

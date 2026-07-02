@@ -8,6 +8,8 @@ class Activation {
 
 	public static function activate(): void {
 		( new PostType() )->register();
+		Capabilities::grant_to_administrator();
+		update_option( Capabilities::GRANTED_OPTION, '1' );
 		flush_rewrite_rules();
 	}
 

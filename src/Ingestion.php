@@ -35,33 +35,37 @@ namespace WebMultipliers\ArtifactCanvas;
 class Ingestion {
 
 	public function register_hooks(): void {
-		add_action( 'rest_api_init', [ $this, 'register_routes' ] );
+		add_action( 'rest_api_init', array( $this, 'register_routes' ) );
 	}
 
 	public function register_routes(): void {
-		register_rest_route( 'wmac/v1', '/artifacts', [
-			'methods'             => \WP_REST_Server::CREATABLE,
-			'callback'            => [ $this, 'rest_create' ],
-			'permission_callback' => [ $this, 'check_permission' ],
-			'args'                => [
-				'html' => [
-					'required'          => true,
-					'type'              => 'string',
-					'sanitize_callback' => static function ( $v ): string {
-						return (string) $v;
-					},
-					'validate_callback' => static function ( $v ): bool {
-						return is_string( $v ) && trim( $v ) !== '';
-					},
-				],
-				'title' => [
-					'required'          => false,
-					'type'              => 'string',
-					'default'           => '',
-					'sanitize_callback' => 'sanitize_text_field',
-				],
-			],
-		] );
+		register_rest_route(
+			'wmac/v1',
+			'/artifacts',
+			array(
+				'methods'             => \WP_REST_Server::CREATABLE,
+				'callback'            => array( $this, 'rest_create' ),
+				'permission_callback' => array( $this, 'check_permission' ),
+				'args'                => array(
+					'html'  => array(
+						'required'          => true,
+						'type'              => 'string',
+						'sanitize_callback' => static function ( $v ): string {
+							return (string) $v;
+						},
+						'validate_callback' => static function ( $v ): bool {
+							return is_string( $v ) && trim( $v ) !== '';
+						},
+					),
+					'title' => array(
+						'required'          => false,
+						'type'              => 'string',
+						'default'           => '',
+						'sanitize_callback' => 'sanitize_text_field',
+					),
+				),
+			)
+		);
 	}
 
 	public function check_permission(): bool|\WP_Error {
@@ -69,7 +73,7 @@ class Ingestion {
 			return new \WP_Error(
 				'wmac_unauthorized',
 				__( 'Authentication is required.', 'webmultipliers-wp-artifact-canvas' ),
-				[ 'status' => 401 ]
+				array( 'status' => 401 )
 			);
 		}
 
@@ -80,7 +84,7 @@ class Ingestion {
 			return new \WP_Error(
 				'wmac_forbidden',
 				__( 'You do not have permission to create artifacts.', 'webmultipliers-wp-artifact-canvas' ),
-				[ 'status' => 403 ]
+				array( 'status' => 403 )
 			);
 		}
 
@@ -99,26 +103,34 @@ class Ingestion {
 			);
 		}
 
-		$block_content = serialize_block( [
-			'blockName'    => 'wmac/artifact',
-			'attrs'        => [ 'html' => $html, 'fileStored' => false ],
-			'innerBlocks'  => [],
-			'innerHTML'    => '',
-			'innerContent' => [],
-		] );
+		$block_content = serialize_block(
+			array(
+				'blockName'    => 'wmac/artifact',
+				'attrs'        => array(
+					'html'       => $html,
+					'fileStored' => false,
+				),
+				'innerBlocks'  => array(),
+				'innerHTML'    => '',
+				'innerContent' => array(),
+			)
+		);
 
-		$post_id = wp_insert_post( [
-			'post_type'    => PostType::KEY,
-			'post_title'   => $title,
-			'post_content' => $block_content,
-			'post_status'  => 'draft',
-		], true );
+		$post_id = wp_insert_post(
+			array(
+				'post_type'    => PostType::KEY,
+				'post_title'   => $title,
+				'post_content' => $block_content,
+				'post_status'  => 'draft',
+			),
+			true
+		);
 
 		if ( is_wp_error( $post_id ) ) {
 			return new \WP_Error(
 				'wmac_insert_failed',
 				$post_id->get_error_message(),
-				[ 'status' => 500 ]
+				array( 'status' => 500 )
 			);
 		}
 
@@ -127,13 +139,13 @@ class Ingestion {
 		$preview_url = get_preview_post_link( $post );
 
 		return new \WP_REST_Response(
-			[
+			array(
 				'id'          => $post_id,
 				'title'       => get_the_title( $post_id ),
 				'status'      => 'draft',
 				'edit_url'    => $edit_url,
 				'preview_url' => $preview_url,
-			],
+			),
 			201
 		);
 	}

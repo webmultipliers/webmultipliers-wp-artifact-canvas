@@ -16,6 +16,14 @@ namespace WebMultipliers\ArtifactCanvas;
  * wmac_rendered_html filter chain so AssetMapper, MergeTags, ClientTracking, and
  * LinkGovernance all apply.
  *
+ * Isolation: a usurped page serves artifact HTML at a main-site URL by design,
+ * so sandbox origin isolation cannot apply here. Compensating controls:
+ *   • Configuring usurpation requires unfiltered_html (metabox + meta auth).
+ *   • At serve time the artifact's author must hold unfiltered_html; an
+ *     artifact authored by an untrusted user is never usurped.
+ *   • A strict CSP is sent by default (connect-src 'none' blocks fetch/XHR,
+ *     including authenticated same-origin REST). Filter: wmac_usurpation_csp.
+ *
  * Design note: hooks template_redirect (not do_parse_request) so WordPress still
  * resolves the page normally — the Page record, its slug, and its permalink are
  * preserved in the database. ArtifactAlias (do_parse_request) is unaffected.
@@ -25,23 +33,27 @@ class PageUsurpation {
 	const META_KEY = '_wmac_usurp_artifact_id';
 
 	public function register_hooks(): void {
-		add_action( 'init', [ $this, 'register_meta' ] );
-		add_action( 'template_redirect', [ $this, 'maybe_usurp' ], 5 );
-		add_action( 'add_meta_boxes', [ $this, 'add_meta_box' ] );
-		add_action( 'save_post_page', [ $this, 'save_meta_box' ] );
+		add_action( 'init', array( $this, 'register_meta' ) );
+		add_action( 'template_redirect', array( $this, 'maybe_usurp' ), 5 );
+		add_action( 'add_meta_boxes', array( $this, 'add_meta_box' ) );
+		add_action( 'save_post_page', array( $this, 'save_meta_box' ) );
 	}
 
 	public function register_meta(): void {
-		register_post_meta( 'page', self::META_KEY, [
-			'type'              => 'integer',
-			'description'       => 'Artifact ID whose HTML should be served at this page\'s URL.',
-			'single'            => true,
-			'show_in_rest'      => true,
-			'sanitize_callback' => 'absint',
-			'auth_callback'     => static function ( bool $allowed, string $meta_key, int $post_id ): bool {
-				return current_user_can( 'edit_post', $post_id );
-			},
-		] );
+		register_post_meta(
+			'page',
+			self::META_KEY,
+			array(
+				'type'              => 'integer',
+				'description'       => 'Artifact ID whose HTML should be served at this page\'s URL.',
+				'single'            => true,
+				'show_in_rest'      => true,
+				'sanitize_callback' => 'absint',
+				'auth_callback'     => static function ( bool $allowed, string $meta_key, int $post_id ): bool {
+					return current_user_can( 'edit_post', $post_id ) && current_user_can( 'unfiltered_html' );
+				},
+			)
+		);
 	}
 
 	public function maybe_usurp(): void {
@@ -61,6 +73,12 @@ class PageUsurpation {
 
 		$artifact = get_post( $artifact_id );
 		if ( ! $artifact || $artifact->post_type !== PostType::KEY || $artifact->post_status !== 'publish' ) {
+			return;
+		}
+
+		// Main-origin serving is a trusted-author privilege: never usurp with
+		// an artifact whose author lacks unfiltered_html.
+		if ( ! user_can( (int) $artifact->post_author, 'unfiltered_html' ) ) {
 			return;
 		}
 
@@ -96,10 +114,14 @@ class PageUsurpation {
 	}
 
 	public function add_meta_box(): void {
+		if ( ! current_user_can( 'unfiltered_html' ) ) {
+			return;
+		}
+
 		add_meta_box(
 			'wmac_page_usurpation',
 			__( 'Artifact Usurpation', 'webmultipliers-wp-artifact-canvas' ),
-			[ $this, 'render_meta_box' ],
+			array( $this, 'render_meta_box' ),
 			'page',
 			'side',
 			'default'
@@ -110,20 +132,22 @@ class PageUsurpation {
 		$artifact_id = (int) get_post_meta( $post->ID, self::META_KEY, true );
 		wp_nonce_field( 'wmac_usurp_save', 'wmac_usurp_nonce' );
 
-		$artifacts = get_posts( [
-			'post_type'      => PostType::KEY,
-			'post_status'    => 'publish',
-			'posts_per_page' => -1,
-			'orderby'        => 'title',
-			'order'          => 'ASC',
-		] );
+		$artifacts = get_posts(
+			array(
+				'post_type'      => PostType::KEY,
+				'post_status'    => 'publish',
+				'posts_per_page' => -1,
+				'orderby'        => 'title',
+				'order'          => 'ASC',
+			)
+		);
 
 		echo '<p><select name="wmac_usurp_artifact_id" style="width:100%">';
 		echo '<option value="0">' . esc_html__( '— None (serve page normally) —', 'webmultipliers-wp-artifact-canvas' ) . '</option>';
 		foreach ( $artifacts as $art ) {
 			printf(
 				'<option value="%d" %s>%s</option>',
-				esc_attr( $art->ID ),
+				(int) $art->ID,
 				selected( $artifact_id, $art->ID, false ),
 				esc_html( $art->post_title )
 			);
@@ -139,7 +163,7 @@ class PageUsurpation {
 			return;
 		}
 
-		if ( ! current_user_can( 'edit_post', $post_id ) ) {
+		if ( ! current_user_can( 'edit_post', $post_id ) || ! current_user_can( 'unfiltered_html' ) ) {
 			return;
 		}
 
@@ -154,7 +178,7 @@ class PageUsurpation {
 	private function get_artifact_html( \WP_Post $artifact ): string {
 		$file_path = ArtifactFile::get_file_path( $artifact->ID );
 		if ( $file_path !== null && is_readable( $file_path ) ) {
-			$content = file_get_contents( $file_path );
+			$content = file_get_contents( $file_path ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents -- local artifact file, not remote.
 			if ( $content !== false ) {
 				return $content;
 			}
@@ -180,6 +204,18 @@ class PageUsurpation {
 		$noindex = (bool) apply_filters( 'wmac_noindex', true, $post );
 		if ( $noindex ) {
 			header( 'X-Robots-Tag: noindex, nofollow' );
+		}
+
+		// Strict by default: connect-src 'none' blocks fetch/XHR from the
+		// usurped page, including authenticated same-origin REST calls.
+		// Return '' from the filter to suppress the header entirely.
+		$csp = (string) apply_filters(
+			'wmac_usurpation_csp',
+			"default-src 'self' 'unsafe-inline' data: blob:; object-src 'none'; base-uri 'self'; form-action 'self'; connect-src 'none'",
+			$post
+		);
+		if ( $csp !== '' ) {
+			header( 'Content-Security-Policy: ' . str_replace( array( "\r", "\n" ), '', $csp ) );
 		}
 	}
 }

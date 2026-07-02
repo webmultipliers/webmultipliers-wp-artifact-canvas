@@ -7,7 +7,7 @@ namespace WebMultipliers\ArtifactCanvas;
 class Revisions {
 
 	public function register_hooks(): void {
-		add_filter( 'wp_get_revision_ui_diff', [ $this, 'filter_revision_ui_diff' ], 10, 3 );
+		add_filter( 'wp_get_revision_ui_diff', array( $this, 'filter_revision_ui_diff' ), 10, 3 );
 	}
 
 	/**
@@ -28,14 +28,14 @@ class Revisions {
 
 			$from_html = $this->extract_html( $compare_from );
 			$to_html   = $this->extract_html( $compare_to );
-			$diff      = wp_text_diff( $from_html, $to_html, [ 'show_split_view' => true ] );
+			$diff      = wp_text_diff( $from_html, $to_html, array( 'show_split_view' => true ) );
 
 			if ( $diff ) {
-				$return[ $i ] = [
+				$return[ $i ] = array(
 					'id'   => 'post_content',
 					'name' => __( 'HTML', 'webmultipliers-wp-artifact-canvas' ),
 					'diff' => $diff,
-				];
+				);
 			} else {
 				// Block JSON changed but artifact HTML is identical — nothing meaningful to show.
 				array_splice( $return, $i, 1 );
@@ -48,7 +48,7 @@ class Revisions {
 	}
 
 	private function is_artifact_revision( \WP_Post $compare_from, \WP_Post $compare_to ): bool {
-		foreach ( [ $compare_to, $compare_from ] as $p ) {
+		foreach ( array( $compare_to, $compare_from ) as $p ) {
 			if ( $p->post_type !== 'revision' ) {
 				if ( $p->post_type === PostType::KEY ) {
 					return true;

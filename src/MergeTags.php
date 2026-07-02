@@ -43,7 +43,7 @@ namespace WebMultipliers\ArtifactCanvas;
 class MergeTags {
 
 	/** Tag names resolved automatically without any map configuration. */
-	public const BUILT_IN_TAGS = [
+	public const BUILT_IN_TAGS = array(
 		'wp_post_title',
 		'wp_post_id',
 		'wp_post_url',
@@ -57,32 +57,32 @@ class MergeTags {
 		'wp_site_tagline',
 		'wp_current_year',
 		'wp_current_date',
-	];
+	);
 
 	public function register_hooks(): void {
-		add_filter( 'wmac_rendered_html', [ $this, 'apply_tags' ], 20, 2 );
+		add_filter( 'wmac_rendered_html', array( $this, 'apply_tags' ), 20, 2 );
 		$this->register_default_tags();
 	}
 
 	private function register_default_tags(): void {
-		add_filter( 'wmac_resolve_tag_wp_post_title',         [ $this, 'resolve_wp_post_title' ],         10, 2 );
-		add_filter( 'wmac_resolve_tag_wp_post_id',            [ $this, 'resolve_wp_post_id' ],             10, 2 );
-		add_filter( 'wmac_resolve_tag_wp_post_url',           [ $this, 'resolve_wp_post_url' ],            10, 2 );
-		add_filter( 'wmac_resolve_tag_wp_post_date',          [ $this, 'resolve_wp_post_date' ],           10, 2 );
-		add_filter( 'wmac_resolve_tag_wp_post_modified_date', [ $this, 'resolve_wp_post_modified_date' ],  10, 2 );
-		add_filter( 'wmac_resolve_tag_wp_post_excerpt',       [ $this, 'resolve_wp_post_excerpt' ],        10, 2 );
-		add_filter( 'wmac_resolve_tag_wp_post_author',        [ $this, 'resolve_wp_post_author' ],         10, 2 );
-		add_filter( 'wmac_resolve_tag_wp_post_slug',          [ $this, 'resolve_wp_post_slug' ],           10, 2 );
-		add_filter( 'wmac_resolve_tag_wp_site_name',          [ $this, 'resolve_wp_site_name' ],           10, 2 );
-		add_filter( 'wmac_resolve_tag_wp_site_url',           [ $this, 'resolve_wp_site_url' ],            10, 2 );
-		add_filter( 'wmac_resolve_tag_wp_site_tagline',       [ $this, 'resolve_wp_site_tagline' ],        10, 2 );
-		add_filter( 'wmac_resolve_tag_wp_current_year',       [ $this, 'resolve_wp_current_year' ],        10, 2 );
-		add_filter( 'wmac_resolve_tag_wp_current_date',       [ $this, 'resolve_wp_current_date' ],        10, 2 );
+		add_filter( 'wmac_resolve_tag_wp_post_title', array( $this, 'resolve_wp_post_title' ), 10, 2 );
+		add_filter( 'wmac_resolve_tag_wp_post_id', array( $this, 'resolve_wp_post_id' ), 10, 2 );
+		add_filter( 'wmac_resolve_tag_wp_post_url', array( $this, 'resolve_wp_post_url' ), 10, 2 );
+		add_filter( 'wmac_resolve_tag_wp_post_date', array( $this, 'resolve_wp_post_date' ), 10, 2 );
+		add_filter( 'wmac_resolve_tag_wp_post_modified_date', array( $this, 'resolve_wp_post_modified_date' ), 10, 2 );
+		add_filter( 'wmac_resolve_tag_wp_post_excerpt', array( $this, 'resolve_wp_post_excerpt' ), 10, 2 );
+		add_filter( 'wmac_resolve_tag_wp_post_author', array( $this, 'resolve_wp_post_author' ), 10, 2 );
+		add_filter( 'wmac_resolve_tag_wp_post_slug', array( $this, 'resolve_wp_post_slug' ), 10, 2 );
+		add_filter( 'wmac_resolve_tag_wp_site_name', array( $this, 'resolve_wp_site_name' ), 10, 2 );
+		add_filter( 'wmac_resolve_tag_wp_site_url', array( $this, 'resolve_wp_site_url' ), 10, 2 );
+		add_filter( 'wmac_resolve_tag_wp_site_tagline', array( $this, 'resolve_wp_site_tagline' ), 10, 2 );
+		add_filter( 'wmac_resolve_tag_wp_current_year', array( $this, 'resolve_wp_current_year' ), 10, 2 );
+		add_filter( 'wmac_resolve_tag_wp_current_date', array( $this, 'resolve_wp_current_date' ), 10, 2 );
 	}
 
 	public function apply_tags( string $html, \WP_Post $post ): string {
 		$map_json = get_post_meta( $post->ID, ArtifactMeta::TAG_MAP, true );
-		$map      = [];
+		$map      = array();
 
 		if ( $map_json && $map_json !== '{}' ) {
 			$decoded = json_decode( $map_json, true );

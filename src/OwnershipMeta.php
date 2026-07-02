@@ -15,27 +15,31 @@ class OwnershipMeta {
 	const META_KEY = '_wmac_owner_id';
 
 	public function register_hooks(): void {
-		add_action( 'init', [ $this, 'register_meta' ] );
-		add_filter( 'manage_' . PostType::KEY . '_posts_columns',       [ $this, 'add_column' ] );
-		add_action( 'manage_' . PostType::KEY . '_posts_custom_column', [ $this, 'render_column' ], 10, 2 );
-		add_filter( 'manage_edit-' . PostType::KEY . '_sortable_columns', [ $this, 'sortable_column' ] );
+		add_action( 'init', array( $this, 'register_meta' ) );
+		add_filter( 'manage_' . PostType::KEY . '_posts_columns', array( $this, 'add_column' ) );
+		add_action( 'manage_' . PostType::KEY . '_posts_custom_column', array( $this, 'render_column' ), 10, 2 );
+		add_filter( 'manage_edit-' . PostType::KEY . '_sortable_columns', array( $this, 'sortable_column' ) );
 	}
 
 	public function register_meta(): void {
-		register_post_meta( PostType::KEY, self::META_KEY, [
-			'type'              => 'integer',
-			'description'       => 'WP user ID of the responsible owner / project manager for this artifact.',
-			'single'            => true,
-			'show_in_rest'      => true,
-			'sanitize_callback' => 'absint',
-			'auth_callback'     => static function ( bool $allowed, string $meta_key, int $post_id ): bool {
-				return current_user_can( 'edit_post', $post_id );
-			},
-		] );
+		register_post_meta(
+			PostType::KEY,
+			self::META_KEY,
+			array(
+				'type'              => 'integer',
+				'description'       => 'WP user ID of the responsible owner / project manager for this artifact.',
+				'single'            => true,
+				'show_in_rest'      => true,
+				'sanitize_callback' => 'absint',
+				'auth_callback'     => static function ( bool $allowed, string $meta_key, int $post_id ): bool {
+					return current_user_can( 'edit_post', $post_id );
+				},
+			)
+		);
 	}
 
 	public function add_column( array $columns ): array {
-		$new = [];
+		$new = array();
 		foreach ( $columns as $key => $label ) {
 			$new[ $key ] = $label;
 			if ( $key === 'author' ) {

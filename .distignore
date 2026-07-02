@@ -1,0 +1,20 @@
+# Development / CI files excluded from the distributable ZIP.
+.claude
+.distignore
+.git
+.github
+.gitignore
+.phpunit.result.cache
+.vscode
+.wp-env.json
+bin
+composer.json
+composer.lock
+node_modules
+phpcs.xml.dist
+phpstan.neon.dist
+phpunit.xml.dist
+tests
+PLAN.md
+*.zip
+.DS_Store

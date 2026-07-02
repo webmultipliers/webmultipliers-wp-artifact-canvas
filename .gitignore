@@ -5,5 +5,5 @@
 *.zip
 .DS_Store
 .vscode/
-build-prod-zip.sh
 PLAN.md
+.phpunit.result.cache

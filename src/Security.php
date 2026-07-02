@@ -9,7 +9,7 @@ class Security {
 	private bool $saving = false;
 
 	public function register_hooks(): void {
-		add_action( 'save_post_' . PostType::KEY, [ $this, 'sanitize_on_save' ], 10, 2 );
+		add_action( 'save_post_' . PostType::KEY, array( $this, 'sanitize_on_save' ), 10, 2 );
 	}
 
 	public function sanitize_on_save( int $post_id, \WP_Post $post ): void {
@@ -22,7 +22,7 @@ class Security {
 		}
 
 		$blocks      = parse_blocks( $post->post_content );
-		$post_update = [ 'ID' => $post_id ];
+		$post_update = array( 'ID' => $post_id );
 		$changed     = false;
 
 		if ( trim( $post->post_title ) === '' ) {

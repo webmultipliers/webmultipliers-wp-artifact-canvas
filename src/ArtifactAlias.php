@@ -21,29 +21,35 @@ class ArtifactAlias {
 	const TRANSIENT = 'wmac_alias_map';
 
 	public function register_hooks(): void {
-		add_action( 'init', [ $this, 'register_meta' ] );
-		add_filter( 'do_parse_request', [ $this, 'maybe_hijack_request' ], 1, 2 );
-		add_action( 'added_post_meta',   [ $this, 'bust_cache' ], 10, 3 );
-		add_action( 'updated_post_meta', [ $this, 'bust_cache' ], 10, 3 );
-		add_action( 'deleted_post_meta', [ $this, 'bust_cache' ], 10, 3 );
-		add_action( 'transition_post_status', [ $this, 'on_status_change' ], 10, 3 );
+		add_action( 'init', array( $this, 'register_meta' ) );
+		add_filter( 'do_parse_request', array( $this, 'maybe_hijack_request' ), 1, 2 );
+		add_action( 'added_post_meta', array( $this, 'bust_cache' ), 10, 3 );
+		add_action( 'updated_post_meta', array( $this, 'bust_cache' ), 10, 3 );
+		add_action( 'deleted_post_meta', array( $this, 'bust_cache' ), 10, 3 );
+		add_action( 'transition_post_status', array( $this, 'on_status_change' ), 10, 3 );
 	}
 
 	public function register_meta(): void {
-		register_post_meta( PostType::KEY, self::META_KEY, [
-			'type'              => 'string',
-			'description'       => 'Custom URL alias for this artifact (relative path, e.g. "pricing").',
-			'single'            => true,
-			'show_in_rest'      => true,
-			'sanitize_callback' => [ self::class, 'sanitize_alias' ],
-			'auth_callback'     => static function ( bool $allowed, string $meta_key, int $post_id ): bool {
-				return current_user_can( 'edit_post', $post_id );
-			},
-		] );
+		register_post_meta(
+			PostType::KEY,
+			self::META_KEY,
+			array(
+				'type'              => 'string',
+				'description'       => 'Custom URL alias for this artifact (relative path, e.g. "pricing").',
+				'single'            => true,
+				'show_in_rest'      => true,
+				'sanitize_callback' => array( self::class, 'sanitize_alias' ),
+				'auth_callback'     => static function ( bool $allowed, string $meta_key, int $post_id ): bool {
+					return current_user_can( 'edit_post', $post_id );
+				},
+			)
+		);
 	}
 
 	/**
 	 * Normalises an alias value: lowercase, only a-z 0-9 - _ /, no leading/trailing slashes.
+	 *
+	 * @param mixed $value Raw meta value.
 	 */
 	public static function sanitize_alias( $value ): string {
 		$value = trim( (string) $value, '/ ' );
@@ -74,10 +80,10 @@ class ArtifactAlias {
 			return true;
 		}
 
-		$wp->query_vars = [
+		$wp->query_vars = array(
 			'p'         => $map[ $path ],
 			'post_type' => PostType::KEY,
-		];
+		);
 
 		return false; // skip normal parsing; $wp->query() uses our vars
 	}
@@ -89,10 +95,10 @@ class ArtifactAlias {
 	 */
 	private function get_request_path(): string {
 		$request_uri = isset( $_SERVER['REQUEST_URI'] ) ? (string) $_SERVER['REQUEST_URI'] : '';
-		$path        = (string) ( parse_url( $request_uri, PHP_URL_PATH ) ?: '' );
+		$path        = (string) ( wp_parse_url( $request_uri, PHP_URL_PATH ) ?: '' );
 
 		// Strip any site subdirectory prefix (e.g. WP installed at /mysite/).
-		$home_path = rtrim( (string) ( parse_url( home_url(), PHP_URL_PATH ) ?: '' ), '/' );
+		$home_path = rtrim( (string) ( wp_parse_url( home_url(), PHP_URL_PATH ) ?: '' ), '/' );
 		if ( $home_path !== '' && strncmp( $path, $home_path, strlen( $home_path ) ) === 0 ) {
 			$path = (string) substr( $path, strlen( $home_path ) );
 		}
@@ -113,19 +119,21 @@ class ArtifactAlias {
 		}
 
 		global $wpdb;
-		$rows = $wpdb->get_results( $wpdb->prepare(
-			"SELECT pm.post_id, pm.meta_value
+		$rows = $wpdb->get_results(
+			$wpdb->prepare(
+				"SELECT pm.post_id, pm.meta_value
 			   FROM {$wpdb->postmeta} pm
 		 INNER JOIN {$wpdb->posts} p ON p.ID = pm.post_id
 			  WHERE pm.meta_key   = %s
 			    AND pm.meta_value != ''
 			    AND p.post_type   = %s
 			    AND p.post_status = 'publish'",
-			self::META_KEY,
-			PostType::KEY
-		) );
+				self::META_KEY,
+				PostType::KEY
+			)
+		);
 
-		$map = [];
+		$map = array();
 		foreach ( $rows as $row ) {
 			$alias = (string) $row->meta_value;
 			$id    = (int) $row->post_id;
@@ -139,7 +147,13 @@ class ArtifactAlias {
 		return $map;
 	}
 
-	/** Bust the transient whenever the alias meta is created, updated, or deleted. */
+	/**
+	 * Bust the transient whenever the alias meta is created, updated, or deleted.
+	 *
+	 * @param int|int[] $meta_id  Meta ID (deleted_post_meta passes an array of IDs).
+	 * @param int       $post_id  Post ID.
+	 * @param string    $meta_key Meta key.
+	 */
 	public function bust_cache( $meta_id, int $post_id, string $meta_key ): void {
 		if ( $meta_key === self::META_KEY && get_post_type( $post_id ) === PostType::KEY ) {
 			delete_transient( self::TRANSIENT );

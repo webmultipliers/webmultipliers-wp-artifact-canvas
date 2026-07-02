@@ -23,61 +23,70 @@ class LifecycleStatus {
 	const ARCHIVED  = 'wm_archived';
 
 	public function register_hooks(): void {
-		add_action( 'init', [ $this, 'register_statuses' ] );
-		add_action( 'admin_footer-post.php',     [ $this, 'inject_status_js' ] );
-		add_action( 'admin_footer-post-new.php', [ $this, 'inject_status_js' ] );
+		add_action( 'init', array( $this, 'register_statuses' ) );
+		add_action( 'admin_footer-post.php', array( $this, 'inject_status_js' ) );
+		add_action( 'admin_footer-post-new.php', array( $this, 'inject_status_js' ) );
 		// Ensure custom statuses are available in REST API status validation.
-		add_filter( 'rest_' . PostType::KEY . '_query', [ $this, 'include_custom_statuses_in_query' ] );
+		add_filter( 'rest_' . PostType::KEY . '_query', array( $this, 'include_custom_statuses_in_query' ) );
 	}
 
 	public function register_statuses(): void {
-		register_post_status( self::IN_REVIEW, [
-			'label'                     => _x( 'In Review', 'post status', 'webmultipliers-wp-artifact-canvas' ),
-			'public'                    => false,
-			'internal'                  => false,
-			'protected'                 => true,
-			'exclude_from_search'       => true,
-			'show_in_admin_all_list'    => true,
-			'show_in_admin_status_list' => true,
-			/* translators: %s: count placeholder */
-			'label_count'               => _n_noop(
-				'In Review <span class="count">(%s)</span>',
-				'In Review <span class="count">(%s)</span>',
-				'webmultipliers-wp-artifact-canvas'
-			),
-		] );
+		register_post_status(
+			self::IN_REVIEW,
+			array(
+				'label'                     => _x( 'In Review', 'post status', 'webmultipliers-wp-artifact-canvas' ),
+				'public'                    => false,
+				'internal'                  => false,
+				'protected'                 => true,
+				'exclude_from_search'       => true,
+				'show_in_admin_all_list'    => true,
+				'show_in_admin_status_list' => true,
+				/* translators: %s: count placeholder */
+				'label_count'               => _n_noop(
+					'In Review <span class="count">(%s)</span>',
+					'In Review <span class="count">(%s)</span>',
+					'webmultipliers-wp-artifact-canvas'
+				),
+			)
+		);
 
-		register_post_status( self::APPROVED, [
-			'label'                     => _x( 'Approved', 'post status', 'webmultipliers-wp-artifact-canvas' ),
-			'public'                    => false,
-			'internal'                  => false,
-			'protected'                 => true,
-			'exclude_from_search'       => true,
-			'show_in_admin_all_list'    => true,
-			'show_in_admin_status_list' => true,
-			/* translators: %s: count placeholder */
-			'label_count'               => _n_noop(
-				'Approved <span class="count">(%s)</span>',
-				'Approved <span class="count">(%s)</span>',
-				'webmultipliers-wp-artifact-canvas'
-			),
-		] );
+		register_post_status(
+			self::APPROVED,
+			array(
+				'label'                     => _x( 'Approved', 'post status', 'webmultipliers-wp-artifact-canvas' ),
+				'public'                    => false,
+				'internal'                  => false,
+				'protected'                 => true,
+				'exclude_from_search'       => true,
+				'show_in_admin_all_list'    => true,
+				'show_in_admin_status_list' => true,
+				/* translators: %s: count placeholder */
+				'label_count'               => _n_noop(
+					'Approved <span class="count">(%s)</span>',
+					'Approved <span class="count">(%s)</span>',
+					'webmultipliers-wp-artifact-canvas'
+				),
+			)
+		);
 
-		register_post_status( self::ARCHIVED, [
-			'label'                     => _x( 'Archived', 'post status', 'webmultipliers-wp-artifact-canvas' ),
-			'public'                    => false,
-			'internal'                  => false,
-			'protected'                 => true,
-			'exclude_from_search'       => true,
-			'show_in_admin_all_list'    => true,
-			'show_in_admin_status_list' => true,
-			/* translators: %s: count placeholder */
-			'label_count'               => _n_noop(
-				'Archived <span class="count">(%s)</span>',
-				'Archived <span class="count">(%s)</span>',
-				'webmultipliers-wp-artifact-canvas'
-			),
-		] );
+		register_post_status(
+			self::ARCHIVED,
+			array(
+				'label'                     => _x( 'Archived', 'post status', 'webmultipliers-wp-artifact-canvas' ),
+				'public'                    => false,
+				'internal'                  => false,
+				'protected'                 => true,
+				'exclude_from_search'       => true,
+				'show_in_admin_all_list'    => true,
+				'show_in_admin_status_list' => true,
+				/* translators: %s: count placeholder */
+				'label_count'               => _n_noop(
+					'Archived <span class="count">(%s)</span>',
+					'Archived <span class="count">(%s)</span>',
+					'webmultipliers-wp-artifact-canvas'
+				),
+			)
+		);
 	}
 
 	/**
@@ -131,10 +140,10 @@ class LifecycleStatus {
 
 	/** Returns all custom lifecycle status slugs → labels. */
 	public static function get_all(): array {
-		return [
+		return array(
 			self::IN_REVIEW => _x( 'In Review', 'post status', 'webmultipliers-wp-artifact-canvas' ),
-			self::APPROVED  => _x( 'Approved',  'post status', 'webmultipliers-wp-artifact-canvas' ),
-			self::ARCHIVED  => _x( 'Archived',  'post status', 'webmultipliers-wp-artifact-canvas' ),
-		];
+			self::APPROVED  => _x( 'Approved', 'post status', 'webmultipliers-wp-artifact-canvas' ),
+			self::ARCHIVED  => _x( 'Archived', 'post status', 'webmultipliers-wp-artifact-canvas' ),
+		);
 	}
 }

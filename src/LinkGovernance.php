@@ -18,54 +18,75 @@ namespace WebMultipliers\ArtifactCanvas;
  */
 class LinkGovernance {
 
-	const EXPIRES_AT  = '_wmac_expires_at';
-	const MAX_VIEWS   = '_wmac_max_views';
-	const VIEW_COUNT  = '_wmac_view_count';
+	const EXPIRES_AT = '_wmac_expires_at';
+	const MAX_VIEWS  = '_wmac_max_views';
+	const VIEW_COUNT = '_wmac_view_count';
 
 	public function register_hooks(): void {
-		add_action( 'init', [ $this, 'register_meta' ] );
-		add_action( 'wmac_artifact_served', [ $this, 'increment_view_count' ] );
+		add_action( 'init', array( $this, 'register_meta' ) );
+		add_action( 'wmac_artifact_served', array( $this, 'increment_view_count' ) );
 	}
 
 	public function register_meta(): void {
-		$shared = [
+		$shared = array(
 			'object_subtype' => PostType::KEY,
 			'single'         => true,
 			'show_in_rest'   => true,
-		];
+		);
 
-		register_post_meta( PostType::KEY, self::EXPIRES_AT, array_merge( $shared, [
-			'type'              => 'string',
-			'description'       => 'Artifact expires at this UTC datetime (ISO 8601). Empty = no expiry.',
-			'sanitize_callback' => static function ( $v ): string {
-				$v = sanitize_text_field( (string) $v );
-				if ( $v !== '' && strtotime( $v ) === false ) {
-					return '';
-				}
-				return $v;
-			},
-			'auth_callback' => static function ( bool $allowed, string $meta_key, int $post_id ): bool {
-				return current_user_can( 'edit_post', $post_id );
-			},
-		] ) );
+		register_post_meta(
+			PostType::KEY,
+			self::EXPIRES_AT,
+			array_merge(
+				$shared,
+				array(
+					'type'              => 'string',
+					'description'       => 'Artifact expires at this UTC datetime (ISO 8601). Empty = no expiry.',
+					'sanitize_callback' => static function ( $v ): string {
+						$v = sanitize_text_field( (string) $v );
+						if ( $v !== '' && strtotime( $v ) === false ) {
+							return '';
+						}
+						return $v;
+					},
+					'auth_callback'     => static function ( bool $allowed, string $meta_key, int $post_id ): bool {
+						return current_user_can( 'edit_post', $post_id );
+					},
+				)
+			)
+		);
 
-		register_post_meta( PostType::KEY, self::MAX_VIEWS, array_merge( $shared, [
-			'type'              => 'integer',
-			'description'       => 'Maximum public view count before the link expires. 0 = unlimited.',
-			'sanitize_callback' => 'absint',
-			'auth_callback'     => static function ( bool $allowed, string $meta_key, int $post_id ): bool {
-				return current_user_can( 'edit_post', $post_id );
-			},
-		] ) );
+		register_post_meta(
+			PostType::KEY,
+			self::MAX_VIEWS,
+			array_merge(
+				$shared,
+				array(
+					'type'              => 'integer',
+					'description'       => 'Maximum public view count before the link expires. 0 = unlimited.',
+					'sanitize_callback' => 'absint',
+					'auth_callback'     => static function ( bool $allowed, string $meta_key, int $post_id ): bool {
+						return current_user_can( 'edit_post', $post_id );
+					},
+				)
+			)
+		);
 
-		register_post_meta( PostType::KEY, self::VIEW_COUNT, array_merge( $shared, [
-			'type'              => 'integer',
-			'description'       => 'Running total of public serves. Read-only in the editor.',
-			'sanitize_callback' => 'absint',
-			'auth_callback'     => static function ( bool $allowed, string $meta_key, int $post_id ): bool {
-				return current_user_can( 'edit_post', $post_id );
-			},
-		] ) );
+		register_post_meta(
+			PostType::KEY,
+			self::VIEW_COUNT,
+			array_merge(
+				$shared,
+				array(
+					'type'              => 'integer',
+					'description'       => 'Running total of public serves. Read-only in the editor.',
+					'sanitize_callback' => 'absint',
+					'auth_callback'     => static function ( bool $allowed, string $meta_key, int $post_id ): bool {
+						return current_user_can( 'edit_post', $post_id );
+					},
+				)
+			)
+		);
 	}
 
 	/**
@@ -116,7 +137,7 @@ class LinkGovernance {
 		header( 'Cache-Control: no-store' );
 		header( 'X-Robots-Tag: noindex,nofollow' );
 
-		// phpcs:disable WordPress.Security.EscapeOutput.OutputNotEscaped
+		// phpcs:disable WordPress.Security.EscapeOutput -- all variables in this template are pre-escaped above.
 		echo <<<HTML
 		<!doctype html>
 		<html lang="{$lang}">

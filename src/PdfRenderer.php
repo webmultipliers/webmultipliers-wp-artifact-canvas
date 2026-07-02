@@ -24,66 +24,82 @@ namespace WebMultipliers\ArtifactCanvas;
  */
 class PdfRenderer {
 
-	const FORMAT_META  = '_wmac_format';
-	const FORMAT_PDF   = 'pdf';
+	const FORMAT_META = '_wmac_format';
+	const FORMAT_PDF  = 'pdf';
 
 	const PDFJS_URL    = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.3.136/pdf.min.mjs';
 	const PDFJS_WORKER = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.3.136/pdf.worker.min.mjs';
 
 	public function register_hooks(): void {
-		add_action( 'init', [ $this, 'register_meta' ] );
-		add_action( 'rest_api_init', [ $this, 'register_routes' ] );
+		add_action( 'init', array( $this, 'register_meta' ) );
+		add_action( 'rest_api_init', array( $this, 'register_routes' ) );
 	}
 
 	public function register_meta(): void {
-		register_post_meta( PostType::KEY, self::FORMAT_META, [
-			'type'              => 'string',
-			'description'       => 'Artifact format: empty/"html" = passthrough HTML (default), "pdf" = PDF viewer.',
-			'single'            => true,
-			'show_in_rest'      => true,
-			'sanitize_callback' => static function ( $v ): string {
-				return in_array( (string) $v, [ '', 'html', 'pdf' ], true ) ? (string) $v : '';
-			},
-			'auth_callback' => static function ( bool $allowed, string $meta_key, int $post_id ): bool {
-				return current_user_can( 'edit_post', $post_id );
-			},
-		] );
+		register_post_meta(
+			PostType::KEY,
+			self::FORMAT_META,
+			array(
+				'type'              => 'string',
+				'description'       => 'Artifact format: empty/"html" = passthrough HTML (default), "pdf" = PDF viewer.',
+				'single'            => true,
+				'show_in_rest'      => true,
+				'sanitize_callback' => static function ( $v ): string {
+					return in_array( (string) $v, array( '', 'html', 'pdf' ), true ) ? (string) $v : '';
+				},
+				'auth_callback'     => static function ( bool $allowed, string $meta_key, int $post_id ): bool {
+					return current_user_can( 'edit_post', $post_id );
+				},
+			)
+		);
 	}
 
 	public function register_routes(): void {
-		$id_arg = [
-			'id' => [
+		$id_arg = array(
+			'id' => array(
 				'required'          => true,
 				'validate_callback' => static function ( $v ): bool {
 					return is_numeric( $v ) && (int) $v > 0;
 				},
 				'sanitize_callback' => 'absint',
-			],
-		];
+			),
+		);
 
 		// Serve the raw PDF bytes (password-gated).
-		register_rest_route( 'wmac/v1', '/artifacts/(?P<id>[\d]+)/pdf', [
-			'methods'             => \WP_REST_Server::READABLE,
-			'callback'            => [ $this, 'rest_serve_pdf' ],
-			'permission_callback' => '__return_true',
-			'args'                => $id_arg,
-		] );
+		register_rest_route(
+			'wmac/v1',
+			'/artifacts/(?P<id>[\d]+)/pdf',
+			array(
+				'methods'             => \WP_REST_Server::READABLE,
+				'callback'            => array( $this, 'rest_serve_pdf' ),
+				'permission_callback' => '__return_true',
+				'args'                => $id_arg,
+			)
+		);
 
 		// Upload a PDF file and set the format flag.
-		register_rest_route( 'wmac/v1', '/artifacts/(?P<id>[\d]+)/pdf-file', [
-			'methods'             => \WP_REST_Server::CREATABLE,
-			'callback'            => [ $this, 'rest_upload_pdf' ],
-			'permission_callback' => [ $this, 'check_edit_permission' ],
-			'args'                => $id_arg,
-		] );
+		register_rest_route(
+			'wmac/v1',
+			'/artifacts/(?P<id>[\d]+)/pdf-file',
+			array(
+				'methods'             => \WP_REST_Server::CREATABLE,
+				'callback'            => array( $this, 'rest_upload_pdf' ),
+				'permission_callback' => array( $this, 'check_edit_permission' ),
+				'args'                => $id_arg,
+			)
+		);
 
 		// Remove the PDF file and revert to HTML mode.
-		register_rest_route( 'wmac/v1', '/artifacts/(?P<id>[\d]+)/pdf-file', [
-			'methods'             => \WP_REST_Server::DELETABLE,
-			'callback'            => [ $this, 'rest_delete_pdf' ],
-			'permission_callback' => [ $this, 'check_edit_permission' ],
-			'args'                => $id_arg,
-		] );
+		register_rest_route(
+			'wmac/v1',
+			'/artifacts/(?P<id>[\d]+)/pdf-file',
+			array(
+				'methods'             => \WP_REST_Server::DELETABLE,
+				'callback'            => array( $this, 'rest_delete_pdf' ),
+				'permission_callback' => array( $this, 'check_edit_permission' ),
+				'args'                => $id_arg,
+			)
+		);
 	}
 
 	// -------------------------------------------------------------------------
@@ -117,7 +133,7 @@ class PdfRenderer {
 		header( 'Cache-Control: no-store' );
 		header( 'X-Robots-Tag: noindex,nofollow' );
 
-		// phpcs:disable WordPress.Security.EscapeOutput.OutputNotEscaped
+		// phpcs:disable WordPress.Security.EscapeOutput -- all variables in this template are pre-escaped above.
 		echo <<<HTML
 		<!doctype html>
 		<html lang="{$lang}">
@@ -210,6 +226,23 @@ class PdfRenderer {
 		// phpcs:enable
 	}
 
+	/**
+	 * Password gate for the raw PDF byte stream — mirrors the cookie check
+	 * WordPress performs for post_password_required() front-end views.
+	 */
+	private function password_gate_passed( \WP_Post $post ): bool {
+		if ( ! post_password_required( $post ) ) {
+			return true;
+		}
+
+		$hash   = $post->post_password;
+		$cookie = isset( $_COOKIE[ 'wp-postpass_' . COOKIEHASH ] )
+			? wp_unslash( (string) $_COOKIE[ 'wp-postpass_' . COOKIEHASH ] )
+			: '';
+
+		return $cookie !== '' && wp_check_password( $cookie, $hash );
+	}
+
 	// -------------------------------------------------------------------------
 	// REST callbacks
 	// -------------------------------------------------------------------------
@@ -223,16 +256,9 @@ class PdfRenderer {
 			exit;
 		}
 
-		// Password gate: check cookie that WP sets after the form is submitted.
-		if ( post_password_required( $post ) ) {
-			$hash     = $post->post_password;
-			$cookie   = isset( $_COOKIE[ 'wp-postpass_' . COOKIEHASH ] )
-				? wp_unslash( (string) $_COOKIE[ 'wp-postpass_' . COOKIEHASH ] )
-				: '';
-			if ( ! $cookie || ! wp_check_password( $cookie, $hash ) ) {
-				status_header( 401 );
-				exit;
-			}
+		if ( ! $this->password_gate_passed( $post ) ) {
+			status_header( 401 );
+			exit;
 		}
 
 		$pdf_path = self::get_pdf_path( $post_id );
@@ -259,64 +285,65 @@ class PdfRenderer {
 		$files   = $request->get_file_params();
 
 		if ( empty( $files['file'] ) || $files['file']['error'] !== UPLOAD_ERR_OK ) {
-			return new \WP_Error( 'wmac_no_file', __( 'No valid file provided.', 'webmultipliers-wp-artifact-canvas' ), [ 'status' => 400 ] );
+			return new \WP_Error( 'wmac_no_file', __( 'No valid file provided.', 'webmultipliers-wp-artifact-canvas' ), array( 'status' => 400 ) );
 		}
 
 		$file = $files['file'];
 		$ext  = strtolower( (string) pathinfo( $file['name'], PATHINFO_EXTENSION ) );
 
 		if ( $ext !== 'pdf' ) {
-			return new \WP_Error( 'wmac_invalid_type', __( 'Only .pdf files are accepted.', 'webmultipliers-wp-artifact-canvas' ), [ 'status' => 400 ] );
+			return new \WP_Error( 'wmac_invalid_type', __( 'Only .pdf files are accepted.', 'webmultipliers-wp-artifact-canvas' ), array( 'status' => 400 ) );
 		}
 
 		$max_bytes = (int) apply_filters( 'wmac_max_pdf_size', 50 * 1024 * 1024 );
 		if ( (int) $file['size'] > $max_bytes ) {
-			return new \WP_Error( 'wmac_file_too_large', __( 'File exceeds the maximum allowed size.', 'webmultipliers-wp-artifact-canvas' ), [ 'status' => 413 ] );
+			return new \WP_Error( 'wmac_file_too_large', __( 'File exceeds the maximum allowed size.', 'webmultipliers-wp-artifact-canvas' ), array( 'status' => 413 ) );
 		}
 
-		// Validate PDF magic bytes (%PDF).
+		// Validate PDF magic bytes (%PDF) — a 4-byte read of the upload tmp
+		// file; WP_Filesystem adds nothing here.
+		// phpcs:disable WordPress.WP.AlternativeFunctions
 		$fh = fopen( $file['tmp_name'], 'rb' );
 		if ( $fh === false ) {
-			return new \WP_Error( 'wmac_read_failed', __( 'Could not open the uploaded file.', 'webmultipliers-wp-artifact-canvas' ), [ 'status' => 500 ] );
+			return new \WP_Error( 'wmac_read_failed', __( 'Could not open the uploaded file.', 'webmultipliers-wp-artifact-canvas' ), array( 'status' => 500 ) );
 		}
 		$magic = fread( $fh, 4 );
 		fclose( $fh );
+		// phpcs:enable WordPress.WP.AlternativeFunctions
 		if ( $magic !== '%PDF' ) {
-			return new \WP_Error( 'wmac_invalid_pdf', __( 'Uploaded file is not a valid PDF (%PDF magic bytes missing).', 'webmultipliers-wp-artifact-canvas' ), [ 'status' => 400 ] );
+			return new \WP_Error( 'wmac_invalid_pdf', __( 'Uploaded file is not a valid PDF (%PDF magic bytes missing).', 'webmultipliers-wp-artifact-canvas' ), array( 'status' => 400 ) );
 		}
 
-		$dir = ArtifactFile::get_or_create_upload_dir();
-		if ( is_wp_error( $dir ) ) {
-			return $dir;
+		$dest = ArtifactFile::get_write_path( $post_id, 'pdf' );
+		if ( is_wp_error( $dest ) ) {
+			return $dest;
 		}
 
-		$dest = $dir . DIRECTORY_SEPARATOR . $post_id . '.pdf';
+		ArtifactFile::delete_files( $post_id, 'pdf' );
+
 		if ( ! move_uploaded_file( $file['tmp_name'], $dest ) ) {
-			return new \WP_Error( 'wmac_upload_failed', __( 'Could not save the PDF file.', 'webmultipliers-wp-artifact-canvas' ), [ 'status' => 500 ] );
+			return new \WP_Error( 'wmac_upload_failed', __( 'Could not save the PDF file.', 'webmultipliers-wp-artifact-canvas' ), array( 'status' => 500 ) );
 		}
 
 		update_post_meta( $post_id, self::FORMAT_META, self::FORMAT_PDF );
 
-		return new \WP_REST_Response( [ 'stored' => true ], 200 );
+		return new \WP_REST_Response( array( 'stored' => true ), 200 );
 	}
 
 	public function rest_delete_pdf( \WP_REST_Request $request ): \WP_REST_Response|\WP_Error {
-		$post_id  = absint( $request->get_param( 'id' ) );
-		$pdf_path = self::get_pdf_path( $post_id );
+		$post_id = absint( $request->get_param( 'id' ) );
 
-		if ( $pdf_path !== null && file_exists( $pdf_path ) ) {
-			wp_delete_file( $pdf_path );
-		}
+		ArtifactFile::delete_files( $post_id, 'pdf' );
 
 		delete_post_meta( $post_id, self::FORMAT_META );
 
-		return new \WP_REST_Response( [ 'removed' => true ], 200 );
+		return new \WP_REST_Response( array( 'removed' => true ), 200 );
 	}
 
 	public function check_edit_permission( \WP_REST_Request $request ): bool|\WP_Error {
 		$post_id = absint( $request->get_param( 'id' ) );
 		if ( ! current_user_can( 'edit_post', $post_id ) ) {
-			return new \WP_Error( 'wmac_forbidden', __( 'Insufficient permissions.', 'webmultipliers-wp-artifact-canvas' ), [ 'status' => 403 ] );
+			return new \WP_Error( 'wmac_forbidden', __( 'Insufficient permissions.', 'webmultipliers-wp-artifact-canvas' ), array( 'status' => 403 ) );
 		}
 		return true;
 	}
@@ -326,12 +353,6 @@ class PdfRenderer {
 	// -------------------------------------------------------------------------
 
 	public static function get_pdf_path( int $post_id ): ?string {
-		$upload_dir = wp_upload_dir();
-		if ( $upload_dir['error'] ) {
-			return null;
-		}
-		return $upload_dir['basedir']
-			. DIRECTORY_SEPARATOR . 'wmac-artifacts'
-			. DIRECTORY_SEPARATOR . $post_id . '.pdf';
+		return ArtifactFile::get_file_path( $post_id, 'pdf' );
 	}
 }

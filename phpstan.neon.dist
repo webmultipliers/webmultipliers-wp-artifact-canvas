@@ -1,0 +1,14 @@
+includes:
+    - vendor/szepeviktor/phpstan-wordpress/extension.neon
+
+parameters:
+    level: 6
+    paths:
+        - src
+    bootstrapFiles:
+        - tests/Support/phpstan-bootstrap.php
+    treatPhpDocTypesAsCertain: false
+    ignoreErrors:
+        # WP filter/action callbacks pass loosely-shaped arrays; documenting
+        # exact value types for each adds noise without catching real bugs.
+        - identifier: missingType.iterableValue

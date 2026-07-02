@@ -7,50 +7,63 @@ namespace WebMultipliers\ArtifactCanvas;
 /**
  * Manages server-side HTML file storage for artifacts.
  *
- * Files live at: {uploads}/wmac-artifacts/{post_id}.html
- * The directory is protected from direct HTTP access via .htaccess.
+ * Files live at: {uploads}/wmac-artifacts/{post_id}-{token}.{ext} where the
+ * token is an HMAC of the post ID keyed with wp_salt(), so file URLs are not
+ * guessable even if the webserver fails to block the directory. Files written
+ * by pre-1.0 versions at the legacy {post_id}.{ext} path are still readable.
+ *
+ * Direct HTTP access is blocked via .htaccess on Apache; Nginx needs a
+ * server-level rule (see README). An admin health check probes the directory
+ * over HTTP and warns when it is reachable.
  *
  * Renderer::get_artifact_html() checks for a stored file first and falls back
  * to the block's html attribute, so both storage modes coexist gracefully.
  */
 class ArtifactFile {
 
+	private const PROBE_TRANSIENT = 'wmac_file_protection_probe';
+
 	public function register_hooks(): void {
-		add_action( 'rest_api_init', [ $this, 'register_routes' ] );
-		add_action( 'before_delete_post', [ $this, 'cleanup_on_delete' ] );
+		add_action( 'rest_api_init', array( $this, 'register_routes' ) );
+		add_action( 'before_delete_post', array( $this, 'cleanup_on_delete' ) );
+		add_action( 'admin_notices', array( $this, 'maybe_show_protection_notice' ) );
 	}
 
 	public function register_routes(): void {
-		$args = [
-			'id' => [
+		$args = array(
+			'id' => array(
 				'required'          => true,
 				'validate_callback' => static function ( $v ): bool {
 					return is_numeric( $v ) && (int) $v > 0;
 				},
 				'sanitize_callback' => 'absint',
-			],
-		];
+			),
+		);
 
-		register_rest_route( 'wmac/v1', '/artifacts/(?P<id>[\d]+)/file', [
-			[
-				'methods'             => \WP_REST_Server::READABLE,
-				'callback'            => [ $this, 'rest_get' ],
-				'permission_callback' => [ $this, 'check_permission' ],
-				'args'                => $args,
-			],
-			[
-				'methods'             => \WP_REST_Server::CREATABLE,
-				'callback'            => [ $this, 'rest_upload' ],
-				'permission_callback' => [ $this, 'check_permission' ],
-				'args'                => $args,
-			],
-			[
-				'methods'             => \WP_REST_Server::DELETABLE,
-				'callback'            => [ $this, 'rest_delete' ],
-				'permission_callback' => [ $this, 'check_permission' ],
-				'args'                => $args,
-			],
-		] );
+		register_rest_route(
+			'wmac/v1',
+			'/artifacts/(?P<id>[\d]+)/file',
+			array(
+				array(
+					'methods'             => \WP_REST_Server::READABLE,
+					'callback'            => array( $this, 'rest_get' ),
+					'permission_callback' => array( $this, 'check_permission' ),
+					'args'                => $args,
+				),
+				array(
+					'methods'             => \WP_REST_Server::CREATABLE,
+					'callback'            => array( $this, 'rest_upload' ),
+					'permission_callback' => array( $this, 'check_permission' ),
+					'args'                => $args,
+				),
+				array(
+					'methods'             => \WP_REST_Server::DELETABLE,
+					'callback'            => array( $this, 'rest_delete' ),
+					'permission_callback' => array( $this, 'check_permission' ),
+					'args'                => $args,
+				),
+			)
+		);
 	}
 
 	public function check_permission( \WP_REST_Request $request ): bool|\WP_Error {
@@ -61,7 +74,7 @@ class ArtifactFile {
 			return new \WP_Error(
 				'wmac_not_found',
 				__( 'Artifact not found.', 'webmultipliers-wp-artifact-canvas' ),
-				[ 'status' => 404 ]
+				array( 'status' => 404 )
 			);
 		}
 
@@ -69,7 +82,7 @@ class ArtifactFile {
 			return new \WP_Error(
 				'wmac_forbidden',
 				__( 'You do not have permission to edit this artifact.', 'webmultipliers-wp-artifact-canvas' ),
-				[ 'status' => 403 ]
+				array( 'status' => 403 )
 			);
 		}
 
@@ -84,20 +97,20 @@ class ArtifactFile {
 			return new \WP_Error(
 				'wmac_no_file',
 				__( 'No file is attached to this artifact.', 'webmultipliers-wp-artifact-canvas' ),
-				[ 'status' => 404 ]
+				array( 'status' => 404 )
 			);
 		}
 
-		$content = file_get_contents( $file_path );
+		$content = file_get_contents( $file_path ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents -- local artifact file, not remote.
 		if ( $content === false ) {
 			return new \WP_Error(
 				'wmac_read_failed',
 				__( 'Could not read the stored file.', 'webmultipliers-wp-artifact-canvas' ),
-				[ 'status' => 500 ]
+				array( 'status' => 500 )
 			);
 		}
 
-		return new \WP_REST_Response( [ 'html' => $content ], 200 );
+		return new \WP_REST_Response( array( 'html' => $content ), 200 );
 	}
 
 	public function rest_upload( \WP_REST_Request $request ): \WP_REST_Response|\WP_Error {
@@ -108,7 +121,7 @@ class ArtifactFile {
 			return new \WP_Error(
 				'wmac_no_file',
 				__( 'No valid file provided.', 'webmultipliers-wp-artifact-canvas' ),
-				[ 'status' => 400 ]
+				array( 'status' => 400 )
 			);
 		}
 
@@ -116,11 +129,11 @@ class ArtifactFile {
 
 		// Extension check — we control the destination name, so this just validates intent.
 		$ext = strtolower( (string) pathinfo( $file['name'], PATHINFO_EXTENSION ) );
-		if ( ! in_array( $ext, [ 'html', 'htm' ], true ) ) {
+		if ( ! in_array( $ext, array( 'html', 'htm' ), true ) ) {
 			return new \WP_Error(
 				'wmac_invalid_type',
 				__( 'Only .html and .htm files are accepted.', 'webmultipliers-wp-artifact-canvas' ),
-				[ 'status' => 400 ]
+				array( 'status' => 400 )
 			);
 		}
 
@@ -129,37 +142,71 @@ class ArtifactFile {
 			return new \WP_Error(
 				'wmac_file_too_large',
 				__( 'File exceeds the maximum allowed size.', 'webmultipliers-wp-artifact-canvas' ),
-				[ 'status' => 413 ]
+				array( 'status' => 413 )
 			);
 		}
 
-		$dir = self::get_or_create_upload_dir();
-		if ( is_wp_error( $dir ) ) {
-			return $dir;
+		$dest = self::get_write_path( $post_id );
+		if ( is_wp_error( $dest ) ) {
+			return $dest;
 		}
 
-		$dest = $dir . DIRECTORY_SEPARATOR . $post_id . '.html';
+		// A re-upload replaces the file; clear any legacy-named copy so the
+		// old content can never be served again.
+		self::delete_files( $post_id );
 
 		if ( ! move_uploaded_file( $file['tmp_name'], $dest ) ) {
 			return new \WP_Error(
 				'wmac_upload_failed',
 				__( 'Could not save the uploaded file.', 'webmultipliers-wp-artifact-canvas' ),
-				[ 'status' => 500 ]
+				array( 'status' => 500 )
 			);
 		}
 
-		return new \WP_REST_Response( [ 'stored' => true ], 200 );
+		// Uploaded files are served verbatim, so they must clear the same trust
+		// bar as block content: authors without unfiltered_html get wp_kses_post
+		// applied, mirroring Security::sanitize_on_save. This keys off the
+		// uploading user (not the post author), so a delegated author cannot use
+		// the file path — or a usurped page owned by an admin — to smuggle raw
+		// <script> past the kses gate.
+		$sanitized = false;
+		if ( ! current_user_can( 'unfiltered_html' ) ) {
+			$this->sanitize_stored_file( $dest );
+			$sanitized = true;
+		}
+
+		return new \WP_REST_Response(
+			array(
+				'stored'    => true,
+				'sanitized' => $sanitized,
+			),
+			200
+		);
+	}
+
+	/**
+	 * Runs wp_kses_post in place on a stored HTML file — the file-path
+	 * equivalent of Security::sanitize_on_save for the block-content path.
+	 */
+	private function sanitize_stored_file( string $path ): void {
+		$raw = file_get_contents( $path ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents -- local stored file, not remote.
+		if ( $raw === false ) {
+			return;
+		}
+
+		$clean = wp_kses_post( $raw );
+		if ( $clean !== $raw ) {
+			// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_file_put_contents
+			file_put_contents( $path, $clean );
+		}
 	}
 
 	public function rest_delete( \WP_REST_Request $request ): \WP_REST_Response|\WP_Error {
-		$post_id   = absint( $request->get_param( 'id' ) );
-		$file_path = self::get_file_path( $post_id );
+		$post_id = absint( $request->get_param( 'id' ) );
 
-		if ( $file_path !== null && file_exists( $file_path ) ) {
-			wp_delete_file( $file_path );
-		}
+		self::delete_files( $post_id );
 
-		return new \WP_REST_Response( [ 'removed' => true ], 200 );
+		return new \WP_REST_Response( array( 'removed' => true ), 200 );
 	}
 
 	public function cleanup_on_delete( int $post_id ): void {
@@ -168,25 +215,72 @@ class ArtifactFile {
 			return;
 		}
 
-		$file_path = self::get_file_path( $post_id );
-		if ( $file_path !== null && file_exists( $file_path ) ) {
-			wp_delete_file( $file_path );
-		}
+		self::delete_files( $post_id, 'html' );
+		self::delete_files( $post_id, 'pdf' );
 	}
 
 	/**
-	 * Returns the expected file path for a given post ID.
-	 * The file may or may not exist — callers should check is_readable().
+	 * Unguessable per-post filename token, keyed with the site's auth salt.
+	 * Deterministic, so no extra meta is needed to locate a post's file.
 	 */
-	public static function get_file_path( int $post_id ): ?string {
+	public static function file_token( int $post_id ): string {
+		return substr( hash_hmac( 'sha256', 'wmac-artifact-' . $post_id, wp_salt( 'auth' ) ), 0, 16 );
+	}
+
+	/**
+	 * Returns the read path for a post's stored file, preferring the
+	 * randomized name and falling back to the legacy {id}.{ext} name written
+	 * by pre-1.0 versions. Null when the upload dir is unavailable; the file
+	 * may not exist — callers should check is_readable().
+	 */
+	public static function get_file_path( int $post_id, string $ext = 'html' ): ?string {
 		$upload_dir = wp_upload_dir();
 		if ( $upload_dir['error'] ) {
 			return null;
 		}
 
-		return $upload_dir['basedir']
-			. DIRECTORY_SEPARATOR . 'wmac-artifacts'
-			. DIRECTORY_SEPARATOR . $post_id . '.html';
+		$base = $upload_dir['basedir'] . DIRECTORY_SEPARATOR . 'wmac-artifacts' . DIRECTORY_SEPARATOR;
+
+		$randomized = $base . $post_id . '-' . self::file_token( $post_id ) . '.' . $ext;
+		if ( file_exists( $randomized ) ) {
+			return $randomized;
+		}
+
+		$legacy = $base . $post_id . '.' . $ext;
+		if ( file_exists( $legacy ) ) {
+			return $legacy;
+		}
+
+		return $randomized;
+	}
+
+	/** Destination path for new writes — always the randomized name. */
+	public static function get_write_path( int $post_id, string $ext = 'html' ): string|\WP_Error {
+		$dir = self::get_or_create_upload_dir();
+		if ( is_wp_error( $dir ) ) {
+			return $dir;
+		}
+
+		return $dir . DIRECTORY_SEPARATOR . $post_id . '-' . self::file_token( $post_id ) . '.' . $ext;
+	}
+
+	/** Deletes both the randomized and legacy files for a post. */
+	public static function delete_files( int $post_id, string $ext = 'html' ): void {
+		$upload_dir = wp_upload_dir();
+		if ( $upload_dir['error'] ) {
+			return;
+		}
+
+		$base = $upload_dir['basedir'] . DIRECTORY_SEPARATOR . 'wmac-artifacts' . DIRECTORY_SEPARATOR;
+
+		foreach ( array(
+			$base . $post_id . '-' . self::file_token( $post_id ) . '.' . $ext,
+			$base . $post_id . '.' . $ext,
+		) as $path ) {
+			if ( file_exists( $path ) ) {
+				wp_delete_file( $path );
+			}
+		}
 	}
 
 	/**
@@ -200,7 +294,7 @@ class ArtifactFile {
 			return new \WP_Error(
 				'wmac_upload_dir',
 				$upload_dir['error'],
-				[ 'status' => 500 ]
+				array( 'status' => 500 )
 			);
 		}
 
@@ -214,16 +308,98 @@ class ArtifactFile {
 			return new \WP_Error(
 				'wmac_mkdir',
 				__( 'Could not create the upload directory.', 'webmultipliers-wp-artifact-canvas' ),
-				[ 'status' => 500 ]
+				array( 'status' => 500 )
 			);
 		}
 
-		// Block direct HTTP access on Apache. Nginx environments need a server-level rule.
+		// Block direct HTTP access on Apache (2.4 and 2.2 syntax). Nginx
+		// environments need a server-level rule; the admin health check
+		// (maybe_show_protection_notice) detects when the directory is
+		// reachable and shows the rule to add.
+		$htaccess = "<IfModule mod_authz_core.c>\nRequire all denied\n</IfModule>\n"
+			. "<IfModule !mod_authz_core.c>\nDeny from all\n</IfModule>\n";
 		// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_file_put_contents
-		file_put_contents( $dir . DIRECTORY_SEPARATOR . '.htaccess', "Deny from all\n" );
+		file_put_contents( $dir . DIRECTORY_SEPARATOR . '.htaccess', $htaccess );
 		// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_file_put_contents
 		file_put_contents( $dir . DIRECTORY_SEPARATOR . 'index.php', "<?php // Silence is golden.\n" );
 
 		return $dir;
+	}
+
+	// -------------------------------------------------------------------------
+	// Protection health check
+	// -------------------------------------------------------------------------
+
+	/**
+	 * Probes whether the storage directory is reachable over HTTP and shows
+	 * an admin error with the Nginx rule when it is. Runs at most once per
+	 * 12 hours, only for admins on artifact screens.
+	 */
+	public function maybe_show_protection_notice(): void {
+		if ( ! current_user_can( 'manage_options' ) ) {
+			return;
+		}
+
+		$screen = function_exists( 'get_current_screen' ) ? get_current_screen() : null;
+		if ( ! $screen || strpos( (string) $screen->id, PostType::KEY ) === false ) {
+			return;
+		}
+
+		if ( ! $this->storage_dir_is_reachable() ) {
+			return;
+		}
+
+		printf(
+			'<div class="notice notice-error"><p><strong>%s</strong> %s</p><pre>location ^~ %s { deny all; }</pre></div>',
+			esc_html__( 'Artifact files are publicly reachable.', 'webmultipliers-wp-artifact-canvas' ),
+			esc_html__( 'Your webserver is not blocking direct access to the artifact storage directory (the bundled .htaccess only covers Apache). Add this rule to your Nginx server block and reload:', 'webmultipliers-wp-artifact-canvas' ),
+			esc_html( (string) wp_parse_url( self::probe_base_url(), PHP_URL_PATH ) )
+		);
+	}
+
+	/** URL of the storage directory (for probing and the notice). */
+	private static function probe_base_url(): string {
+		$upload_dir = wp_upload_dir();
+
+		return trailingslashit( $upload_dir['baseurl'] ) . 'wmac-artifacts/';
+	}
+
+	/** True when a probe file in the storage directory can be fetched over HTTP. */
+	private function storage_dir_is_reachable(): bool {
+		$cached = get_transient( self::PROBE_TRANSIENT );
+		if ( $cached !== false ) {
+			return $cached === 'reachable';
+		}
+
+		$result = 'blocked';
+
+		$dir = self::get_or_create_upload_dir();
+		if ( ! is_wp_error( $dir ) ) {
+			$marker = 'wmac-probe-' . self::file_token( 0 );
+			$probe  = $dir . DIRECTORY_SEPARATOR . $marker . '.html';
+			// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_file_put_contents
+			file_put_contents( $probe, $marker );
+
+			$response = wp_remote_get(
+				self::probe_base_url() . $marker . '.html',
+				array(
+					'timeout'   => 5,
+					'sslverify' => false, // Loopback request to this very host.
+				)
+			);
+
+			wp_delete_file( $probe );
+
+			if ( ! is_wp_error( $response )
+				&& wp_remote_retrieve_response_code( $response ) === 200
+				&& strpos( wp_remote_retrieve_body( $response ), $marker ) !== false
+			) {
+				$result = 'reachable';
+			}
+		}
+
+		set_transient( self::PROBE_TRANSIENT, $result, 12 * HOUR_IN_SECONDS );
+
+		return $result === 'reachable';
 	}
 }

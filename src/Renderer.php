@@ -7,7 +7,7 @@ namespace WebMultipliers\ArtifactCanvas;
 class Renderer {
 
 	public function register_hooks(): void {
-		add_action( 'template_redirect', [ $this, 'maybe_render' ], 1 );
+		add_action( 'template_redirect', array( $this, 'maybe_render' ), 1 );
 	}
 
 	public function maybe_render(): void {
@@ -79,7 +79,7 @@ class Renderer {
 		// File lookup always uses the canonical post ID — never the autosave's ID.
 		$file_path = ArtifactFile::get_file_path( $post->ID );
 		if ( $file_path !== null && is_readable( $file_path ) ) {
-			$content = file_get_contents( $file_path );
+			$content = file_get_contents( $file_path ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents -- local artifact file, not remote.
 			if ( $content !== false ) {
 				return $content;
 			}
@@ -118,7 +118,7 @@ class Renderer {
 
 		$csp = (string) apply_filters( 'wmac_csp', '', $post );
 		if ( $csp !== '' ) {
-			header( 'Content-Security-Policy: ' . str_replace( [ "\r", "\n" ], '', $csp ) );
+			header( 'Content-Security-Policy: ' . str_replace( array( "\r", "\n" ), '', $csp ) );
 		}
 	}
 
@@ -133,7 +133,10 @@ class Renderer {
 		}
 
 		$oembed_url = add_query_arg(
-			[ 'url' => $permalink, 'format' => 'json' ],
+			array(
+				'url'    => $permalink,
+				'format' => 'json',
+			),
 			rest_url( 'oembed/1.0/embed' )
 		);
 
@@ -169,7 +172,7 @@ class Renderer {
 		}
 
 		$mode = (string) apply_filters( 'wmac_artifact_admin_toolbar_mode', 'custom', $post );
-		if ( ! in_array( $mode, [ 'none', 'custom', 'core' ], true ) ) {
+		if ( ! in_array( $mode, array( 'none', 'custom', 'core' ), true ) ) {
 			$mode = 'custom';
 		}
 
@@ -208,30 +211,34 @@ class Renderer {
 			return '';
 		}
 
+		// Injected into a raw passthrough HTML document that never runs
+		// wp_head/wp_footer, so the enqueue API cannot deliver these.
+		// phpcs:disable WordPress.WP.EnqueuedResources
 		$assets = sprintf(
 			'<link rel="stylesheet" id="admin-bar-css" href="%1$s" media="all" /><script src="%2$s" defer></script>',
 			esc_url( includes_url( 'css/admin-bar.min.css' ) ),
 			esc_url( includes_url( 'js/admin-bar.min.js' ) )
 		);
+		// phpcs:enable WordPress.WP.EnqueuedResources
 
 		return $this->get_admin_toolbar_offset_markup() . $assets . $bar_markup;
 	}
 
 	private function build_custom_admin_toolbar( \WP_Post $post ): string {
-		$links = [
-			[
+		$links = array(
+			array(
 				'label' => __( 'Edit Artifact', 'webmultipliers-wp-artifact-canvas' ),
 				'url'   => get_edit_post_link( $post->ID, '' ) ?: admin_url( 'post.php?post=' . $post->ID . '&action=edit' ),
-			],
-			[
+			),
+			array(
 				'label' => __( 'Artifacts', 'webmultipliers-wp-artifact-canvas' ),
 				'url'   => admin_url( 'edit.php?post_type=' . PostType::KEY ),
-			],
-			[
+			),
+			array(
 				'label' => __( 'New Artifact', 'webmultipliers-wp-artifact-canvas' ),
 				'url'   => admin_url( 'post-new.php?post_type=' . PostType::KEY ),
-			],
-		];
+			),
+		);
 
 		$links = (array) apply_filters( 'wmac_artifact_admin_toolbar_links', $links, $post );
 

@@ -14,7 +14,7 @@ namespace WebMultipliers\ArtifactCanvas;
 class AssetMapper {
 
 	public function register_hooks(): void {
-		add_filter( 'wmac_rendered_html', [ $this, 'apply_map' ], 10, 2 );
+		add_filter( 'wmac_rendered_html', array( $this, 'apply_map' ), 10, 2 );
 	}
 
 	public function apply_map( string $html, \WP_Post $post ): string {
@@ -37,18 +37,18 @@ class AssetMapper {
 
 			// Replace in both double- and single-quoted attribute values.
 			$html = str_replace(
-				[
+				array(
 					'src="' . $relative_path . '"',
 					"src='" . $relative_path . "'",
 					'href="' . $relative_path . '"',
 					"href='" . $relative_path . "'",
-				],
-				[
+				),
+				array(
 					'src="' . $escaped_url . '"',
 					"src='" . $escaped_url . "'",
 					'href="' . $escaped_url . '"',
 					"href='" . $escaped_url . "'",
-				],
+				),
 				$html
 			);
 		}

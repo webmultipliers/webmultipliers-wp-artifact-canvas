@@ -26,12 +26,29 @@ class PackageValidator {
 	const DEFAULT_MAX_DEPTH    = 5;
 	const DEFAULT_MAX_ZIP_SIZE = 50 * 1024 * 1024; // 50 MB
 
-	const BLOCKED_EXTENSIONS = [
-		'php', 'php3', 'php4', 'php5', 'php7', 'php8',
-		'phtml', 'phar', 'py', 'pyc', 'rb', 'pl',
-		'cgi', 'sh', 'bash', 'zsh', 'exe', 'bat', 'cmd',
-		'htaccess', 'htpasswd',
-	];
+	const BLOCKED_EXTENSIONS = array(
+		'php',
+		'php3',
+		'php4',
+		'php5',
+		'php7',
+		'php8',
+		'phtml',
+		'phar',
+		'py',
+		'pyc',
+		'rb',
+		'pl',
+		'cgi',
+		'sh',
+		'bash',
+		'zsh',
+		'exe',
+		'bat',
+		'cmd',
+		'htaccess',
+		'htpasswd',
+	);
 
 	/**
 	 * Opens a zip archive, validates its contents, and returns the index.html string.
@@ -44,7 +61,7 @@ class PackageValidator {
 			return new \WP_Error(
 				'wmac_zip_unavailable',
 				__( 'The ZipArchive PHP extension is required for Git-driven ingestion.', 'webmultipliers-wp-artifact-canvas' ),
-				[ 'status' => 500 ]
+				array( 'status' => 500 )
 			);
 		}
 
@@ -59,7 +76,7 @@ class PackageValidator {
 					__( 'Could not open archive (ZipArchive error %d).', 'webmultipliers-wp-artifact-canvas' ),
 					$result
 				),
-				[ 'status' => 422 ]
+				array( 'status' => 422 )
 			);
 		}
 
@@ -70,13 +87,13 @@ class PackageValidator {
 		$entry_depth = PHP_INT_MAX;
 		$total_size  = 0;
 
-		for ( $i = 0; $i < $zip->numFiles; $i++ ) {
+		for ( $i = 0; $i < $zip->numFiles; $i++ ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- ZipArchive core property.
 			$stat = $zip->statIndex( $i );
 			if ( $stat === false ) {
 				continue;
 			}
 
-			$name = $stat['name'];
+			$name        = $stat['name'];
 			$total_size += (int) $stat['size'];
 
 			if ( $total_size > $max_size ) {
@@ -84,7 +101,7 @@ class PackageValidator {
 				return new \WP_Error(
 					'wmac_zip_too_large',
 					__( 'Archive exceeds the maximum allowed uncompressed size (50 MB).', 'webmultipliers-wp-artifact-canvas' ),
-					[ 'status' => 413 ]
+					array( 'status' => 413 )
 				);
 			}
 
@@ -104,7 +121,7 @@ class PackageValidator {
 						__( 'Archive contains a disallowed file type: %s', 'webmultipliers-wp-artifact-canvas' ),
 						esc_html( $name )
 					),
-					[ 'status' => 422 ]
+					array( 'status' => 422 )
 				);
 			}
 
@@ -121,7 +138,7 @@ class PackageValidator {
 						__( 'Archive contains files nested deeper than the allowed maximum (%d levels).', 'webmultipliers-wp-artifact-canvas' ),
 						$max_depth
 					),
-					[ 'status' => 422 ]
+					array( 'status' => 422 )
 				);
 			}
 
@@ -138,7 +155,7 @@ class PackageValidator {
 			return new \WP_Error(
 				'wmac_zip_no_index',
 				__( 'Archive does not contain an index.html file.', 'webmultipliers-wp-artifact-canvas' ),
-				[ 'status' => 422 ]
+				array( 'status' => 422 )
 			);
 		}
 
@@ -149,7 +166,7 @@ class PackageValidator {
 			return new \WP_Error(
 				'wmac_zip_read',
 				__( 'Could not read index.html from the archive.', 'webmultipliers-wp-artifact-canvas' ),
-				[ 'status' => 500 ]
+				array( 'status' => 500 )
 			);
 		}
 
@@ -157,7 +174,7 @@ class PackageValidator {
 			return new \WP_Error(
 				'wmac_zip_not_html',
 				__( 'index.html does not appear to be a valid HTML document.', 'webmultipliers-wp-artifact-canvas' ),
-				[ 'status' => 422 ]
+				array( 'status' => 422 )
 			);
 		}
 
